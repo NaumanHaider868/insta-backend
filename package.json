@@ -48,6 +48,7 @@
     "db:studio": "prisma studio -schema=./prisma/schema/"
   },
   "lint-staged": {
+    "!node_modules/**": [],
     "**/*.ts": [
       "eslint --fix",
       "prettier --write"

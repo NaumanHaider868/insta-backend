@@ -14,19 +14,7 @@ const createProduct = async (req: RequestWithBody<CreateProductBody>, res: Respo
   try {
     const data = transformProduct(req.body);
 
-    const product = await prisma.product.create({
-      data,
-      include: {
-        variants: {
-          include: {
-            images: true,
-            sizes: true,
-          },
-        },
-      },
-    });
-
-    return sendSuccessResponse(res, 200, product, 'Product created successfully');
+    return sendSuccessResponse(res, 200, data, 'Product created successfully');
   } catch (error) {
     return appErrorResponse(res, error);
   }
