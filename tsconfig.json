@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "lib": ["es6", "dom"],
+    "target": "es2018",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "outDir": "dist",
+    "resolveJsonModule": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "skipLibCheck": true,
+    "sourceMap": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "typeRoots": ["./node_modules/@types", "./types"],
+    "types": ["node", "express"]
+  },
+  "include": ["**/*.ts", "types/**/*.ts"],
+  "exclude": ["node_modules", "**/*.spec.ts"]
+}
