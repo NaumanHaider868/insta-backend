@@ -8,7 +8,9 @@ const validationSchema = {
     password: Joi.string().required(),
   }),
   [AuthSchema.Register]: Joi.object({
-    name: Joi.string().required(),
+    userName: Joi.string().required(),
+    firstName: Joi.string().required(),
+    lastName: Joi.string().required(),
     email: Joi.string().email().required(),
     password: Joi.string().required(),
   }),

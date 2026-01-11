@@ -1,11 +1,9 @@
 import { Express, Request, Response } from 'express';
 import { appErrorResponse, sendErrorResponse } from '../utils';
 import auth from './auth';
-import product from './product';
 
 const routes = Object.freeze({
   auth: [auth],
-  product: [product],
 });
 
 /**
