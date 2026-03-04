@@ -80,56 +80,71 @@ const register = async (req: RequestWithBody<RegisterPayload>, res: Response) =>
 const login = async (req: RequestWithBody<LoginPayload>, res: Response) => {
   try {
     const { email, password } = req.body;
+
     const user = await prisma.users.findUnique({
-      where: {
-        email,
-      },
+      where: { email },
     });
+
     if (!user) {
       return sendErrorResponse(res, 400, 'Invalid Credentials');
     }
+
     const isPasswordValid = await comparePassword(password, user.password);
-    if (!isPasswordValid) return sendErrorResponse(res, 400, 'Invalid Credentials');
+
+    if (!isPasswordValid) {
+      return sendErrorResponse(res, 400, 'Invalid Credentials');
+    }
+
+    /**
+     * ==============================
+     * USER NOT VERIFIED
+     * ==============================
+     */
     if (!user.isVerified) {
-      const [emailVerificationToken, verificationCheckToken] = [
-        getJWTToken(
-          { id: user.id },
-          { expiresIn: '10min', reference: TokenIdentifier.EmailVerification }
-        ),
-        getJWTToken(
-          { id: user.id },
-          { expiresIn: '10min', reference: TokenIdentifier.VerificationCheck }
-        ),
-      ];
+      const emailVerificationToken = getJWTToken(
+        { id: user.id },
+        { expiresIn: '10m', reference: TokenIdentifier.EmailVerification }
+      );
 
       const verificationUrl = `${process.env.FRONTEND_BASE_URL}/verify-email?token=${emailVerificationToken}`;
 
       await mailConnector.sendMail({
         from: process.env.MAIL_FROM,
         to: email,
-        subject: 'Confirm Your Email - Union',
+        subject: 'Confirm Your Email',
         html: `
-    <h2>Welcome to Union!</h2>
-    <p>Thank you for joining our fashion community. Please confirm your email address by clicking the button below:</p>
-    <a href="${verificationUrl}" style="padding: 10px 20px; background-color: #000; color: #fff; text-decoration: none; border-radius: 5px;">Confirm Email</a>
-    <p>Once confirmed, you’ll be able to explore the latest collections, exclusive discounts, and new arrivals.</p>
-    <p>If you did not create an account, you can safely ignore this email.</p>
-    <p>This link will expire in 10 minutes.</p>
-  `,
+          <h2>Welcome!</h2>
+          <p>Please confirm your email:</p>
+          <a href="${verificationUrl}">Confirm Email</a>
+          <p>This link expires in 10 minutes.</p>
+        `,
       });
 
-      return sendSuccessResponse(
-        res,
-        200,
-        {
-          token: verificationCheckToken,
-          isVerified: false,
-        },
-        'User not verified. Please verify first'
-      );
+      return sendErrorResponse(res, 403, 'Email not verified. Verification link sent again.');
     }
 
-    return sendSuccessResponse(res, 200, user, 'Login Successfully');
+    const authToken = getJWTToken(
+      { id: user.id, email: user.email },
+      { expiresIn: '7d', reference: TokenIdentifier.Login }
+    );
+    const safeUser = (({ id, userName, email, firstName, lastName, phone, profileImage }) => ({
+      id,
+      userName,
+      email,
+      firstName,
+      lastName,
+      phone,
+      profileImage,
+    }))(user);
+    return sendSuccessResponse(
+      res,
+      200,
+      {
+        token: authToken,
+        user: safeUser,
+      },
+      'Login Successfully'
+    );
   } catch (error) {
     return appErrorResponse(res, error);
   }

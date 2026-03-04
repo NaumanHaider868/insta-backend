@@ -1,9 +1,11 @@
 import { Express, Request, Response } from 'express';
 import { appErrorResponse, sendErrorResponse } from '../utils';
 import auth from './auth';
+import chat from './chat';
 
 const routes = Object.freeze({
   auth: [auth],
+  chat: [chat],
 });
 
 /**
