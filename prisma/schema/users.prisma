@@ -1,0 +1,23 @@
+model Users {
+    id         String  @id @default(uuid())
+    userName   String  @unique
+    firstName String
+    lastName  String
+    email      String  @unique
+    phone      String?
+    password   String
+
+    profileImage String?
+
+    isOnline Boolean  @default(false)
+    lastSeen DateTime @default(now())
+    isVerified Boolean @default(false)
+    verificationCode String?
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    // Relations for messages
+    sentMessages     Message[] @relation("SentMessages")
+    receivedMessages Message[] @relation("ReceivedMessages")
+}
