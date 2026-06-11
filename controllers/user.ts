@@ -7,7 +7,7 @@ const userProfile = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id } = req.params;
     const user = await prisma.users.findUnique({
-      where: { id },
+      where: { id: id as string },
     });
     return sendSuccessResponse(res, 200, user);
   } catch (error) {

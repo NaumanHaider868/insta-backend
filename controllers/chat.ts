@@ -73,7 +73,7 @@ const getConversation = async (req: AuthenticatedRequest, res: Response) => {
 
     // Check if user exists
     const otherUser = await prisma.users.findUnique({
-      where: { id: userId },
+      where: { id: userId as string },
       select: { id: true, isVerified: true },
     });
 
@@ -88,8 +88,8 @@ const getConversation = async (req: AuthenticatedRequest, res: Response) => {
     const messages = await prisma.message.findMany({
       where: {
         OR: [
-          { senderId: currentUserId, receiverId: userId },
-          { senderId: userId, receiverId: currentUserId },
+          { senderId: currentUserId, receiverId: userId as string },
+          { senderId: userId as string, receiverId: currentUserId },
         ],
       },
       include: {
@@ -118,7 +118,7 @@ const getConversation = async (req: AuthenticatedRequest, res: Response) => {
     // Mark messages as read where current user is receiver
     await prisma.message.updateMany({
       where: {
-        senderId: userId,
+        senderId: userId as string,
         receiverId: currentUserId,
         isRead: false,
       },
