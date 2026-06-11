@@ -17,6 +17,8 @@ model Users {
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
 
+    profile String?
+
     // Relations for messages
     sentMessages     Message[] @relation("SentMessages")
     receivedMessages Message[] @relation("ReceivedMessages")

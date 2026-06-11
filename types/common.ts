@@ -1,9 +1,16 @@
 import { Request as ExpressRequest } from 'express';
 
-interface RequestWithFormData<T> extends ExpressRequest {
-  fields: {
-    [K in keyof T]: T[K] extends File ? File : T[K] extends File[] ? File[] : T[K];
-  };
+interface File {
+  fieldname: string;
+  originalname: string;
+  encoding: string;
+  mimetype: string;
+  buffer: Buffer;
 }
 
-export { RequestWithFormData };
+interface RequestWithFormData<T> extends ExpressRequest {
+  file: File;
+  body: T;
+}
+
+export { RequestWithFormData, File };

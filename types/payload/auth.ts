@@ -1,3 +1,5 @@
+import { File } from '../common';
+
 interface LoginPayload {
   email: string;
   password: string;
@@ -16,4 +18,13 @@ interface AuthTokenPayload {
   password: string;
 }
 
-export type { LoginPayload, RegisterPayload, AuthTokenPayload };
+interface ProfileUpdateFormData {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  address: string;
+  image?: File;
+}
+
+export type { LoginPayload, RegisterPayload, AuthTokenPayload, ProfileUpdateFormData };

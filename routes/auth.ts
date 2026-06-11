@@ -5,11 +5,13 @@ import {
   register,
   resendVerificationEmail,
   resetPassword,
+  uploadProfile,
   verificationCheck,
   verifyEmail,
 } from '../controllers';
 import { authValidator } from '../validators';
 import { AuthSchema } from '../enums';
+import { upload } from '../middlewares';
 
 const router = Router();
 router.post('/login', authValidator.getMiddleware(AuthSchema.Login), login);
@@ -35,5 +37,7 @@ router.post(
   authValidator.getMiddleware(AuthSchema.Reset_Password),
   resetPassword
 );
+
+router.post('/profile', upload.single('image'), uploadProfile);
 
 export default router;
