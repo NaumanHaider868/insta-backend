@@ -1,13 +1,15 @@
 'use strict';
+import http from 'http';
 import express from 'express';
 import bodyParser from 'body-parser';
 import morgan from 'morgan';
 import { config } from 'dotenv';
-import appRouter from './routes';
-import { formatError } from './utils';
+import cors from 'cors';
 import path from 'path';
 import process from 'process';
-import cors from 'cors'; // ✅ added
+import appRouter from './routes';
+import { formatError } from './utils';
+import { initSocketIO } from './sockets';
 
 config();
 
@@ -15,9 +17,9 @@ const app = express();
 
 app.use(
   cors({
-    origin: 'http://localhost:5173',
+    origin: process.env.CLIENT_URL || 'http://localhost:5173',
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   })
 );
@@ -33,8 +35,11 @@ app.get('/favicon.ico', (_, res) => {
 
 appRouter(app);
 
-const port = process.env.PORT;
-const server = app.listen(port, () => {
+const port = process.env.PORT || 8000;
+const server = http.createServer(app);
+initSocketIO(server);
+
+server.listen(port, () => {
   console.log('🚀 App running on port', port);
 });
 

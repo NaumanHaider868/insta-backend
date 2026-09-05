@@ -1,0 +1,26 @@
+enum NotificationType {
+    LIKE_POST
+    LIKE_REEL
+    COMMENT_POST
+    COMMENT_REEL
+    FOLLOW
+    MESSAGE
+}
+
+model Notification {
+    id        String           @id @default(uuid())
+    userId    String
+    actorId   String
+    type      NotificationType
+    entityId  String?
+    isRead    Boolean          @default(false)
+    createdAt DateTime         @default(now())
+
+    user  Users @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+    actor Users @relation("ActorNotifications", fields: [actorId], references: [id], onDelete: Cascade)
+
+    @@index([userId])
+    @@index([actorId])
+    @@index([createdAt])
+    @@index([userId, isRead])
+}

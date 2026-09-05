@@ -42,7 +42,7 @@ class ValidatorHelper<T extends string> {
   ) {
     const schema = this.getSchema(schemaName);
     return (
-      req: RequestWithFormData<Record<string, unknown>>,
+      req: RequestWithFormData,
       res: Response,
       next: NextFunction
     ) => {
@@ -50,7 +50,7 @@ class ValidatorHelper<T extends string> {
         ? req.query
         : options.isFormData
           ? req.fields || {}
-          : req.body || {}; // 👈 Fix here
+          : req.body || {};
 
       const { error } = schema.validate(options.sanitizeBody ? deepSanitize(data) : data, {
         ...this.joiValidationOptions,

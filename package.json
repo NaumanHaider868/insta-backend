@@ -14,9 +14,11 @@
     "morgan": "^1.10.1",
     "multer": "^2.1.1",
     "nodemailer": "^7.0.6",
+    "socket.io": "^4.8.3",
     "uuid": "^11.1.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/express": "^5.0.3",
     "@types/node": "^24.3.0",
     "@typescript-eslint/eslint-plugin": "^8.41.0",
@@ -45,10 +47,10 @@
     "start": "node dist/app.js",
     "build": "prisma generate && tsc && npm run copy-assets",
     "copy-assets": "copyfiles -u 1 public/**/* dist/public && copyfiles -u 1 views/**/* dist/views",
-    "db:generate": "prisma generate -schema=./prisma/schema/",
-    "db:push": "prisma db push -schema=./prisma/schema/",
-    "db:pull": "prisma db pull -schema=./prisma/schema/",
-    "db:studio": "prisma studio -schema=./prisma/schema/"
+    "db:generate": "prisma generate --schema=./prisma/schema/",
+    "db:push": "prisma db push --schema=./prisma/schema/",
+    "db:pull": "prisma db pull --schema=./prisma/schema/",
+    "db:studio": "prisma studio --schema=./prisma/schema/"
   },
   "lint-staged": {
     "!node_modules/**": [],

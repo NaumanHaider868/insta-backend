@@ -11,7 +11,11 @@ const s3 = new S3Client({
   forcePathStyle: true,
 });
 
-const uploadFile = async (fileData: Buffer, blobPath: string) => {
+const uploadFile = async (
+  fileData: Buffer,
+  blobPath: string,
+  contentType: string = 'image/jpeg'
+) => {
   const bucketName = process.env.RAILWAY_BUCKET_NAME!;
 
   await s3.send(
@@ -19,7 +23,7 @@ const uploadFile = async (fileData: Buffer, blobPath: string) => {
       Bucket: bucketName,
       Key: blobPath,
       Body: fileData,
-      ContentType: 'image/jpeg',
+      ContentType: contentType,
     })
   );
 

@@ -8,8 +8,10 @@ interface File {
   buffer: Buffer;
 }
 
-interface RequestWithFormData<T> extends ExpressRequest {
-  file: File;
+interface RequestWithFormData<T = Record<string, unknown>> extends ExpressRequest {
+  file?: File;
+  files?: File[] | { [fieldname: string]: File[] };
+  fields?: Record<string, unknown>;
   body: T;
 }
 

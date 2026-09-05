@@ -1,0 +1,63 @@
+enum PostMediaType {
+    IMAGE
+}
+
+model Post {
+    id        String      @id @default(uuid())
+    userId    String
+    caption   String?     @db.Text
+    createdAt DateTime    @default(now())
+    updatedAt DateTime    @updatedAt
+
+    user     Users        @relation(fields: [userId], references: [id], onDelete: Cascade)
+    media    PostMedia[]
+    likes    PostLike[]
+    comments PostComment[]
+
+    @@index([userId])
+    @@index([createdAt])
+}
+
+model PostMedia {
+    id        String        @id @default(uuid())
+    postId    String
+    url       String        @db.Text
+    mediaType PostMediaType @default(IMAGE)
+    order     Int           @default(0)
+    createdAt DateTime      @default(now())
+
+    post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+    @@index([postId])
+    @@index([postId, order])
+}
+
+model PostLike {
+    id        String   @id @default(uuid())
+    userId    String
+    postId    String
+    createdAt DateTime @default(now())
+
+    user Users @relation(fields: [userId], references: [id], onDelete: Cascade)
+    post Post  @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+    @@unique([userId, postId])
+    @@index([postId])
+    @@index([userId])
+}
+
+model PostComment {
+    id        String   @id @default(uuid())
+    userId    String
+    postId    String
+    content   String   @db.Text
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    user Users @relation(fields: [userId], references: [id], onDelete: Cascade)
+    post Post  @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+    @@index([postId])
+    @@index([userId])
+    @@index([createdAt])
+}

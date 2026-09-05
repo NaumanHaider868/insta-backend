@@ -8,9 +8,9 @@ interface File {
   buffer: Buffer;
 }
 
-interface RequestWithBody<T> extends ExpressRequest {
+type RequestWithBody<T> = ExpressRequest & {
   body: T;
-}
+};
 
 interface RequestWithParams<T extends ExpressRequest['params']> extends ExpressRequest {
   params: T;
@@ -25,10 +25,11 @@ interface RequestWithParamsAndBody<T extends ExpressRequest['params'], U> extend
   body: U;
 }
 
-interface RequestWithFormData<T> extends ExpressRequest {
-  fields: {
-    [K in keyof T]: T[K] extends File ? File : T[K] extends File[] ? File[] : T[K];
-  };
+interface RequestWithFormData<T = Record<string, unknown>> extends ExpressRequest {
+  file?: File;
+  files?: File[] | { [fieldname: string]: File[] };
+  fields?: Record<string, unknown>;
+  body: T;
 }
 
 export type {

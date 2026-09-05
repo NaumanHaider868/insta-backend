@@ -22,4 +22,22 @@ model Users {
     // Relations for messages
     sentMessages     Message[] @relation("SentMessages")
     receivedMessages Message[] @relation("ReceivedMessages")
+
+    // Relations for social graph (follows)
+    followers Follow[] @relation("UserFollowers")
+    following Follow[] @relation("UserFollowing")
+
+    // Relations for posts
+    posts        Post[]
+    postLikes    PostLike[]
+    postComments PostComment[]
+
+    // Relations for reels
+    reels        Reel[]
+    reelLikes    ReelLike[]
+    reelComments ReelComment[]
+
+    // Relations for notifications
+    notifications         Notification[] @relation("UserNotifications")
+    triggeredNotifications Notification[] @relation("ActorNotifications")
 }
