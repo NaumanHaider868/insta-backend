@@ -62,6 +62,7 @@ const sendMessage = async (
     const io = getIO();
     if (io) {
       io.to(`user:${receiverId}`).emit('message:receive', message);
+      io.to(`user:${senderId}`).emit('message:sent', message);
     }
 
     await createNotification({

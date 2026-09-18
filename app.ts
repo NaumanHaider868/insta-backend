@@ -1,7 +1,6 @@
 'use strict';
 import http from 'http';
 import express from 'express';
-import bodyParser from 'body-parser';
 import morgan from 'morgan';
 import { config } from 'dotenv';
 import cors from 'cors';
@@ -24,8 +23,8 @@ app.use(
   })
 );
 
-app.use(bodyParser.json({ limit: '50mb' }));
-app.use(bodyParser.urlencoded({ extended: true }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true }));
 
 app.use(morgan('dev'));
 

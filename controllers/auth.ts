@@ -11,7 +11,7 @@ import { prisma } from '../config';
 import { comparePassword } from '../utils';
 import { getJWTToken } from '../utils';
 import { TokenIdentifier } from '../enums';
-import { mailConnector } from '../utils/mailConnector';
+import { safeSendMail } from '../utils/mailConnector';
 import { Users as UserSchema } from '@prisma/client';
 import { AuthTokenPayload, LoginPayload, RegisterPayload } from '../types';
 
@@ -108,7 +108,7 @@ const login = async (req: RequestWithBody<LoginPayload>, res: Response) => {
 
       const verificationUrl = `${process.env.FRONTEND_BASE_URL}/verify-email?token=${emailVerificationToken}`;
 
-      await mailConnector.sendMail({
+      await safeSendMail({
         from: process.env.MAIL_FROM,
         to: email,
         subject: 'Confirm Your Email',
@@ -120,7 +120,11 @@ const login = async (req: RequestWithBody<LoginPayload>, res: Response) => {
         `,
       });
 
-      return sendErrorResponse(res, 403, 'Email not verified. Verification link sent again.');
+      return sendErrorResponse(
+        res,
+        403,
+        'Email not verified. Please confirm your email before logging in.'
+      );
     }
 
     const authToken = getJWTToken(
@@ -265,7 +269,7 @@ const forgetPasswordEmail = async (
       { expiresIn: '10min', reference: TokenIdentifier.ResetPassword }
     );
 
-    await mailConnector.sendMail({
+    await safeSendMail({
       from: process.env.MAIL_FROM,
       to: email,
       subject: 'Reset Your Password - Union',
