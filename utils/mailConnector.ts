@@ -1,4 +1,7 @@
 import nodemailer from 'nodemailer';
+import { config } from 'dotenv';
+
+config();
 
 export const mailConnector = process.env.MAILTRAP_HOST && process.env.MAILTRAP_PORT
   ? nodemailer.createTransport({
