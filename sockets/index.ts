@@ -3,6 +3,8 @@ import { Server, Socket } from 'socket.io';
 import { checkJwtToken } from '../utils';
 import { TokenIdentifier } from '../enums';
 import { prisma } from '../config';
+import { createNotification } from '../services';
+import { NotificationType } from '@prisma/client';
 
 interface SocketUser {
   id: string;
@@ -20,6 +22,7 @@ interface CustomSocket extends Socket {
 
 let io: Server | null = null;
 const userSocketsMap = new Map<string, Set<string>>();
+const userActiveConversationMap = new Map<string, string>();
 
 const getIO = (): Server | null => {
   return io;
@@ -175,12 +178,35 @@ const initSocketIO = (httpServer: HttpServer): Server => {
           // Confirm to sender
           socket.emit('message:sent', message);
 
+          // Create a MESSAGE notification if receiver isn't actively viewing that conversation
+          const receiverActivePartner = userActiveConversationMap.get(receiverId);
+          if (receiverActivePartner !== userId) {
+            await createNotification({
+              userId: receiverId,
+              actorId: userId,
+              type: NotificationType.MESSAGE,
+              entityId: message.id,
+            });
+          }
+
           callback?.({ status: 'success', data: message });
         } catch {
           callback?.({ status: 'error', message: 'Failed to send message' });
         }
       }
     );
+
+    // Event: conversation:enter
+    socket.on('conversation:enter', (data: { partnerId: string }) => {
+      if (data?.partnerId) {
+        userActiveConversationMap.set(userId, data.partnerId);
+      }
+    });
+
+    // Event: conversation:leave
+    socket.on('conversation:leave', () => {
+      userActiveConversationMap.delete(userId);
+    });
 
     // Event: message:read
     socket.on(
@@ -238,6 +264,7 @@ const initSocketIO = (httpServer: HttpServer): Server => {
 
     // Disconnect handler
     socket.on('disconnect', async () => {
+      userActiveConversationMap.delete(userId);
       const userSockets = userSocketsMap.get(userId);
       if (userSockets) {
         userSockets.delete(socket.id);

@@ -19,7 +19,12 @@ const router = Router();
 
 router.use(authenticate);
 
-router.post('/', upload.array('images', 10), postValidator.getMiddleware(PostSchema.Create_Post), createPost);
+router.post(
+  '/',
+  upload.array('images', 10),
+  postValidator.getMiddleware(PostSchema.Create_Post),
+  createPost
+);
 router.get('/feed', getFeed);
 router.get('/user/:userId', getUserPosts);
 router.delete('/comment/:commentId', deleteComment);

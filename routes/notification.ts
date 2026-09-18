@@ -15,6 +15,10 @@ router.get(
   getNotifications
 );
 router.patch('/read-all', markAllAsRead);
-router.patch('/:id/read', markAsRead);
+router.patch(
+  '/:id/read',
+  notificationValidator.getMiddleware(NotificationSchema.Mark_Read, { isParams: true }),
+  markAsRead
+);
 
 export default router;

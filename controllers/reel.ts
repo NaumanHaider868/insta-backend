@@ -234,14 +234,32 @@ const getReelsFeed = async (req: AuthenticatedRequest, res: Response) => {
     });
 
     const followingIds = following.map((f) => f.followingId);
-    const feedUserIds = [...followingIds, currentUserId];
+
+    if (followingIds.length === 0) {
+      return sendSuccessResponse(
+        res,
+        200,
+        {
+          items: [],
+          pagination: {
+            page,
+            limit,
+            total: 0,
+            totalPages: 0,
+            hasNextPage: false,
+            hasPrevPage: false,
+          },
+        },
+        'Reels feed retrieved successfully'
+      );
+    }
 
     const [total, reels] = await Promise.all([
       prisma.reel.count({
-        where: { userId: { in: feedUserIds } },
+        where: { userId: { in: followingIds } },
       }),
       prisma.reel.findMany({
-        where: { userId: { in: feedUserIds } },
+        where: { userId: { in: followingIds } },
         skip,
         take: limit,
         orderBy: { createdAt: 'desc' },

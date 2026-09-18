@@ -34,23 +34,23 @@ class ValidatorHelper<T extends string> {
       sanitizeBody?: boolean;
       isQueryParams?: boolean;
       isFormData?: boolean;
+      isParams?: boolean;
     } = {
       sanitizeBody: true,
       isQueryParams: false,
       isFormData: false,
+      isParams: false,
     }
   ) {
     const schema = this.getSchema(schemaName);
-    return (
-      req: RequestWithFormData,
-      res: Response,
-      next: NextFunction
-    ) => {
-      const data = options.isQueryParams
-        ? req.query
-        : options.isFormData
-          ? req.fields || {}
-          : req.body || {};
+    return (req: RequestWithFormData, res: Response, next: NextFunction) => {
+      const data = options.isParams
+        ? { ...req.params, ...req.query }
+        : options.isQueryParams
+          ? { ...req.query, ...req.params }
+          : options.isFormData
+            ? req.fields || {}
+            : req.body || {};
 
       const { error } = schema.validate(options.sanitizeBody ? deepSanitize(data) : data, {
         ...this.joiValidationOptions,

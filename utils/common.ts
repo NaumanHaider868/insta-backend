@@ -1,12 +1,6 @@
 import { Request as ExpressRequest } from 'express';
 
-interface File {
-  fieldname: string;
-  filename: string;
-  encoding: string;
-  mimeType: string;
-  buffer: Buffer;
-}
+type File = Express.Multer.File;
 
 type RequestWithBody<T> = ExpressRequest & {
   body: T;
@@ -26,8 +20,8 @@ interface RequestWithParamsAndBody<T extends ExpressRequest['params'], U> extend
 }
 
 interface RequestWithFormData<T = Record<string, unknown>> extends ExpressRequest {
-  file?: File;
-  files?: File[] | { [fieldname: string]: File[] };
+  file?: Express.Multer.File;
+  files?: Express.Multer.File[] | { [fieldname: string]: Express.Multer.File[] };
   fields?: Record<string, unknown>;
   body: T;
 }

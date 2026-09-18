@@ -3,6 +3,9 @@ import { prisma } from '../config';
 import { sendErrorResponse, sendSuccessResponse, appErrorResponse } from '../utils';
 import { AuthenticatedRequest } from '../middlewares';
 import { SendMessagePayload } from '../types';
+import { getIO } from '../sockets';
+import { createNotification } from '../services';
+import { NotificationType } from '@prisma/client';
 
 const sendMessage = async (
   req: AuthenticatedRequest & { body: SendMessagePayload },
@@ -56,9 +59,21 @@ const sendMessage = async (
       },
     });
 
+    const io = getIO();
+    if (io) {
+      io.to(`user:${receiverId}`).emit('message:receive', message);
+    }
+
+    await createNotification({
+      userId: receiverId,
+      actorId: senderId,
+      type: NotificationType.MESSAGE,
+      entityId: message.id,
+    });
+
     return sendSuccessResponse(res, 200, message, 'Message sent successfully');
   } catch (error) {
-    return appErrorResponse(res, error);
+    return appErrorResponse(res, error as Error);
   }
 };
 

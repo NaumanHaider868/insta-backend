@@ -21,7 +21,9 @@ export const deepSanitize = <T>(obj: T): T => {
   };
 
   if (Array.isArray(obj)) {
-    const sanitizedArray = obj.map((item) => deepSanitize(item)).filter((item) => !isValueEmpty(item));
+    const sanitizedArray = obj
+      .map((item) => deepSanitize(item))
+      .filter((item) => !isValueEmpty(item));
 
     return sanitizedArray as unknown as T;
   }

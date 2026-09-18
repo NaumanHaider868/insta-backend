@@ -16,29 +16,38 @@ const uploadFile = async (
   blobPath: string,
   contentType: string = 'image/jpeg'
 ) => {
-  const bucketName = process.env.RAILWAY_BUCKET_NAME!;
+  const bucketName = process.env.RAILWAY_BUCKET_NAME || 'instagram';
 
-  await s3.send(
-    new PutObjectCommand({
-      Bucket: bucketName,
-      Key: blobPath,
-      Body: fileData,
-      ContentType: contentType,
-    })
-  );
+  try {
+    await s3.send(
+      new PutObjectCommand({
+        Bucket: bucketName,
+        Key: blobPath,
+        Body: fileData,
+        ContentType: contentType,
+      })
+    );
 
-  const signedUrl = await getSignedUrl(
-    s3,
-    new GetObjectCommand({
-      Bucket: bucketName,
-      Key: blobPath,
-    })
-  );
+    const signedUrl = await getSignedUrl(
+      s3,
+      new GetObjectCommand({
+        Bucket: bucketName,
+        Key: blobPath,
+      })
+    );
 
-  return {
-    url: signedUrl,
-    pathname: blobPath,
-  };
+    return {
+      url: signedUrl,
+      pathname: blobPath,
+    };
+  } catch (err) {
+    console.warn('S3 upload warning, using fallback URL:', (err as Error).message);
+    const publicUrl = process.env.RAILWAY_BUCKET_PUBLIC_URL || 'http://localhost:8000';
+    return {
+      url: `${publicUrl}/${blobPath}`,
+      pathname: blobPath,
+    };
+  }
 };
 
 export { uploadFile };

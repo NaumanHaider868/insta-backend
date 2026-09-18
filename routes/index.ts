@@ -3,11 +3,23 @@ import { appErrorResponse, sendErrorResponse } from '../utils';
 import auth from './auth';
 import chat from './chat';
 import user from './user';
+import follow from './follow';
+import post from './post';
+import reel from './reel';
+import notification from './notification';
 
 const routes = Object.freeze({
   auth: [auth],
   chat: [chat],
   user: [user],
+  follow: [follow],
+  follows: [follow],
+  post: [post],
+  posts: [post],
+  reel: [reel],
+  reels: [reel],
+  notification: [notification],
+  notifications: [notification],
 });
 
 /**
