@@ -1,12 +1,16 @@
 import { Response } from 'express';
 import { handlePrismaError } from './prisma';
 
-const formatError = (err: Error) => {
+const toError = (err: unknown): Error => {
+  return err instanceof Error ? err : new Error(String(err));
+};
+
+const formatError = (err: unknown) => {
+  const error = toError(err);
   return {
-    name: err.name,
-    message: err.message,
-    stack: err.stack,
-    ...err,
+    name: error.name,
+    message: error.message,
+    stack: error.stack,
   };
 };
 
@@ -37,7 +41,7 @@ const sendSuccessResponse = <T>(
   });
 };
 
-const appErrorResponse = (res: Response, err: Error, fallbackMessage = 'Server Error') => {
+const appErrorResponse = (res: Response, err: unknown, fallbackMessage = 'Server Error') => {
   const prismaHandled = handlePrismaError(err);
   const statusCode = prismaHandled.status || 500;
   const message = prismaHandled.message || fallbackMessage;

@@ -51,20 +51,20 @@ const register = async (req: RequestWithBody<RegisterPayload>, res: Response) =>
         { expiresIn: '10min', reference: TokenIdentifier.VerificationCheck }
       ),
     ];
-    //   const verificationUrl = `${process.env.FRONTEND_BASE_URL}/verify-email?token=${emailVerificationToken}`;
-    //   await mailConnector.sendMail({
-    //     from: process.env.MAIL_FROM,
-    //     to: email,
-    //     subject: 'Confirm Your Email - Union',
-    //     html: `
-    //   <h2>Welcome to Union!</h2>
-    //   <p>Thank you for joining our fashion community. Please confirm your email address by clicking the button below:</p>
-    //   <a href="${verificationUrl}" style="padding: 10px 20px; background-color: #000; color: #fff; text-decoration: none; border-radius: 5px;">Confirm Email</a>
-    //   <p>Once confirmed, you’ll be able to explore the latest collections, exclusive discounts, and new arrivals.</p>
-    //   <p>If you did not create an account, you can safely ignore this email.</p>
-    //   <p>This link will expire in 10 minutes.</p>
-    // `,
-    //   });
+    const verificationUrl = `${process.env.FRONTEND_BASE_URL}/verify-email?token=${emailVerificationToken}`;
+    await safeSendMail({
+      from: process.env.MAIL_FROM,
+      to: email,
+      subject: 'Confirm Your Email - Union',
+      html: `
+        <h2>Welcome to Union!</h2>
+        <p>Thank you for joining our fashion community. Please confirm your email address by clicking the button below:</p>
+        <a href="${verificationUrl}" style="padding: 10px 20px; background-color: #000; color: #fff; text-decoration: none; border-radius: 5px;">Confirm Email</a>
+        <p>Once confirmed, you’ll be able to explore the latest collections, exclusive discounts, and new arrivals.</p>
+        <p>If you did not create an account, you can safely ignore this email.</p>
+        <p>This link will expire in 10 minutes.</p>
+      `,
+    });
 
     return sendSuccessResponse(
       res,
@@ -164,7 +164,7 @@ const verifyEmail = async (
       expiredMessage: 'Verification link has expired. Please request a new one.',
       reference: TokenIdentifier.EmailVerification,
     });
-    if (!isValid) return sendErrorResponse(res, 401, error);
+    if (!isValid) return sendErrorResponse(res, 401, error ?? 'Invalid token');
 
     const { id } = payload;
     const user = await prisma.users.findUnique({
@@ -196,16 +196,17 @@ const verificationCheck = async (
       expiredMessage: 'Verification link has expired. Please request a new one.',
       reference: TokenIdentifier.VerificationCheck,
     });
-    if (!isValid) return sendErrorResponse(res, 401, error);
+    if (!isValid) return sendErrorResponse(res, 401, error ?? 'Invalid token');
     const { id } = payload;
 
     const user = await prisma.users.findUnique({
       where: { id },
     });
+    if (!user) return sendErrorResponse(res, 404, 'User not found');
     if (!user.isVerified) return sendErrorResponse(res, 400, 'User not verified');
     const authToken = getJWTToken({ id }, { expiresIn: '10min', reference: TokenIdentifier.Login });
-    delete user.password;
-    sendSuccessResponse(res, 200, { user, token: authToken }, 'Verification complete.');
+    const { password: _password, verificationCode: _verificationCode, ...safeUser } = user;
+    sendSuccessResponse(res, 200, { user: safeUser, token: authToken }, 'Verification complete.');
   } catch (error) {
     return appErrorResponse(res, error);
   }
@@ -221,32 +222,33 @@ const resendVerificationEmail = async (
       expiredMessage: 'Verification link has expired. Please request a new one.',
       reference: TokenIdentifier.VerificationCheck,
     });
-    if (!isValid) return sendErrorResponse(res, 401, error);
+    if (!isValid) return sendErrorResponse(res, 401, error ?? 'Invalid token');
     const { id } = payload;
     const user = await prisma.users.findUnique({
       where: { id },
     });
+    if (!user) return sendErrorResponse(res, 404, 'User not found');
 
     const verificationToken = getJWTToken(
       { id: user.id },
       { expiresIn: '10min', reference: TokenIdentifier.EmailVerification }
     );
 
-    //   const verificationUrl = `${process.env.FRONTEND_BASE_URL}/verify-email?token=${verificationToken}`;
+      const verificationUrl = `${process.env.FRONTEND_BASE_URL}/verify-email?token=${verificationToken}`;
 
-    //   await mailConnector.sendMail({
-    //     from: process.env.MAIL_FROM,
-    //     to: user.email,
-    //     subject: 'Confirm Your Email - Union',
-    //     html: `
-    //   <h2>Welcome to Union!</h2>
-    //   <p>Thank you for joining our fashion community. Please confirm your email address by clicking the button below:</p>
-    //   <a href="${verificationUrl}" style="padding: 10px 20px; background-color: #000; color: #fff; text-decoration: none; border-radius: 5px;">Confirm Email</a>
-    //   <p>Once confirmed, you’ll be able to explore the latest collections, exclusive discounts, and new arrivals.</p>
-    //   <p>If you did not create an account, you can safely ignore this email.</p>
-    //   <p>This link will expire in 10 minutes.</p>
-    // `,
-    //   });
+    await safeSendMail({
+      from: process.env.MAIL_FROM,
+      to: user.email,
+      subject: 'Confirm Your Email - Union',
+      html: `
+        <h2>Welcome to Union!</h2>
+        <p>Thank you for joining our fashion community. Please confirm your email address by clicking the button below:</p>
+        <a href="${verificationUrl}" style="padding: 10px 20px; background-color: #000; color: #fff; text-decoration: none; border-radius: 5px;">Confirm Email</a>
+        <p>Once confirmed, you’ll be able to explore the latest collections, exclusive discounts, and new arrivals.</p>
+        <p>If you did not create an account, you can safely ignore this email.</p>
+        <p>This link will expire in 10 minutes.</p>
+      `,
+    });
 
     sendSuccessResponse(res, 200, verificationToken, 'Verification email sent successfully');
   } catch (error) {
@@ -302,7 +304,7 @@ const resetPassword = async (
       expiredMessage: 'Verification link has expired. Please request a new one.',
       reference: TokenIdentifier.ResetPassword,
     });
-    if (!isValid) return sendErrorResponse(res, 401, error);
+    if (!isValid) return sendErrorResponse(res, 401, error ?? 'Invalid token');
     const { id } = payload;
     const user = await prisma.users.findUnique({
       where: { id },
@@ -316,12 +318,15 @@ const resetPassword = async (
         password: await hashPassword(password),
       },
     });
-    delete user.password;
-    delete user.verificationCode;
-    delete user.id;
-    delete user.createdAt;
-    delete user.updatedAt;
-    sendSuccessResponse(res, 200, user, 'Password reset successfully');
+    const {
+      password: _password,
+      verificationCode: _verificationCode,
+      id: _id,
+      createdAt: _createdAt,
+      updatedAt: _updatedAt,
+      ...safeUser
+    } = user;
+    sendSuccessResponse(res, 200, safeUser, 'Password reset successfully');
   } catch (error) {
     return appErrorResponse(res, error);
   }
