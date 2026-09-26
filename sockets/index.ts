@@ -120,6 +120,23 @@ const initSocketIO = (httpServer: HttpServer): Server => {
       lastSeen: now.toISOString(),
     });
 
+    const pendingMessages = await prisma.message.findMany({
+      where: { receiverId: userId, isReceived: false },
+      select: { id: true, senderId: true },
+    });
+    if (pendingMessages.length > 0) {
+      await prisma.message.updateMany({
+        where: { id: { in: pendingMessages.map(({ id }) => id) } },
+        data: { isReceived: true },
+      });
+      for (const pendingMessage of pendingMessages) {
+        io?.to(`user:${pendingMessage.senderId}`).emit('message:delivered', {
+          messageId: pendingMessage.id,
+          receiverId: userId,
+        });
+      }
+    }
+
     // Event: message:send
     socket.on(
       'message:send',
@@ -144,12 +161,13 @@ const initSocketIO = (httpServer: HttpServer): Server => {
             return;
           }
 
+          const receiverOnline = Boolean(userSocketsMap.get(receiverId)?.size);
           const message = await prisma.message.create({
             data: {
               senderId: userId,
               receiverId,
               content,
-              isReceived: true,
+              isReceived: receiverOnline,
             },
             include: {
               sender: {
@@ -177,6 +195,12 @@ const initSocketIO = (httpServer: HttpServer): Server => {
           io?.to(`user:${receiverId}`).emit('message:receive', message);
           // Confirm to sender
           socket.emit('message:sent', message);
+          if (receiverOnline) {
+            io?.to(`user:${userId}`).emit('message:delivered', {
+              messageId: message.id,
+              receiverId,
+            });
+          }
 
           // Create a MESSAGE notification if receiver isn't actively viewing that conversation
           const receiverActivePartner = userActiveConversationMap.get(receiverId);
@@ -219,7 +243,12 @@ const initSocketIO = (httpServer: HttpServer): Server => {
             return;
           }
 
-          await prisma.message.updateMany({
+          if (userActiveConversationMap.get(userId) !== senderId) {
+            callback?.({ status: 'error', message: 'Conversation is not active' });
+            return;
+          }
+
+          const readResult = await prisma.message.updateMany({
             where: {
               senderId,
               receiverId: userId,
@@ -230,11 +259,12 @@ const initSocketIO = (httpServer: HttpServer): Server => {
             },
           });
 
-          // Notify sender that messages have been read
-          io?.to(`user:${senderId}`).emit('message:read', {
-            readBy: userId,
-            conversationPartnerId: senderId,
-          });
+          if (readResult.count > 0) {
+            io?.to(`user:${senderId}`).emit('message:read', {
+              readBy: userId,
+              conversationPartnerId: senderId,
+            });
+          }
 
           callback?.({ status: 'success' });
         } catch {

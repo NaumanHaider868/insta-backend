@@ -19,11 +19,8 @@ interface AuthTokenPayload {
 }
 
 interface ProfileUpdateFormData {
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone: string;
-  address: string;
+  profile?: string;
+  removeProfileImage?: string;
   image?: File;
 }
 

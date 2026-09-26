@@ -3,6 +3,7 @@ import ValidatorHelper from '../helpers/validator';
 
 enum PostSchema {
   Create_Post = 'Create_Post',
+  Update_Post = 'Update_Post',
   Comment_Post = 'Comment_Post',
   Get_Post = 'Get_Post',
   Get_User_Posts = 'Get_User_Posts',
@@ -12,6 +13,10 @@ enum PostSchema {
 const validationSchema = {
   [PostSchema.Create_Post]: Joi.object({
     caption: Joi.string().max(2200).allow('').optional(),
+  }),
+  [PostSchema.Update_Post]: Joi.object({
+    caption: Joi.string().max(2200).allow('').optional(),
+    retainedMediaIds: Joi.string().required(),
   }),
   [PostSchema.Comment_Post]: Joi.object({
     content: Joi.string().min(1).max(1000).required(),

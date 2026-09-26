@@ -3,6 +3,7 @@ import ValidatorHelper from '../helpers/validator';
 
 enum ReelSchema {
   Create_Reel = 'Create_Reel',
+  Update_Reel = 'Update_Reel',
   Comment_Reel = 'Comment_Reel',
   Get_Reel = 'Get_Reel',
   Get_User_Reels = 'Get_User_Reels',
@@ -12,6 +13,10 @@ enum ReelSchema {
 const validationSchema = {
   [ReelSchema.Create_Reel]: Joi.object({
     caption: Joi.string().max(2200).allow('').optional(),
+  }),
+  [ReelSchema.Update_Reel]: Joi.object({
+    caption: Joi.string().max(2200).allow('').optional(),
+    retainedMediaIds: Joi.string().required(),
   }),
   [ReelSchema.Comment_Reel]: Joi.object({
     content: Joi.string().min(1).max(1000).required(),
