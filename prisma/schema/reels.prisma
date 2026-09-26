@@ -8,11 +8,26 @@ model Reel {
     updatedAt    DateTime      @updatedAt
 
     user     Users         @relation(fields: [userId], references: [id], onDelete: Cascade)
+    media    ReelMedia[]
     likes    ReelLike[]
     comments ReelComment[]
 
     @@index([userId])
     @@index([createdAt])
+}
+
+model ReelMedia {
+    id        String   @id @default(uuid())
+    reelId    String
+    url       String   @db.Text
+    mediaType String   @default("VIDEO")
+    order     Int      @default(0)
+    createdAt DateTime @default(now())
+
+    reel Reel @relation(fields: [reelId], references: [id], onDelete: Cascade)
+
+    @@index([reelId])
+    @@index([reelId, order])
 }
 
 model ReelLike {

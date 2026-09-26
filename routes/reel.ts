@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   uploadReel,
+  updateReel,
   deleteReel,
   getReel,
   getUserReels,
@@ -21,11 +22,20 @@ router.use(authenticate);
 router.post(
   '/',
   uploadVideo.fields([
-    { name: 'video', maxCount: 1 },
+    { name: 'video', maxCount: 10 },
     { name: 'thumbnail', maxCount: 1 },
   ]),
   reelValidator.getMiddleware(ReelSchema.Create_Reel),
   uploadReel
+);
+router.put(
+  '/:id',
+  uploadVideo.fields([
+    { name: 'video', maxCount: 10 },
+    { name: 'thumbnail', maxCount: 1 },
+  ]),
+  reelValidator.getMiddleware(ReelSchema.Update_Reel),
+  updateReel
 );
 
 router.get('/feed', getReelsFeed);

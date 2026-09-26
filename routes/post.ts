@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   createPost,
+  updatePost,
   deletePost,
   getPost,
   getUserPosts,
@@ -24,6 +25,12 @@ router.post(
   upload.array('images', 10),
   postValidator.getMiddleware(PostSchema.Create_Post),
   createPost
+);
+router.put(
+  '/:id',
+  upload.array('images', 10),
+  postValidator.getMiddleware(PostSchema.Update_Post),
+  updatePost
 );
 router.get('/feed', getFeed);
 router.get('/user/:userId', getUserPosts);

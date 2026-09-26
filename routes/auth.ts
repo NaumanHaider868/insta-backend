@@ -11,7 +11,7 @@ import {
 } from '../controllers';
 import { authValidator } from '../validators';
 import { AuthSchema } from '../enums';
-import { upload } from '../middlewares';
+import { authenticate, upload } from '../middlewares';
 
 const router = Router();
 router.post('/login', authValidator.getMiddleware(AuthSchema.Login), login);
@@ -38,6 +38,6 @@ router.post(
   resetPassword
 );
 
-router.post('/profile', upload.single('image'), uploadProfile);
+router.post('/profile', authenticate, upload.single('image'), uploadProfile);
 
 export default router;
