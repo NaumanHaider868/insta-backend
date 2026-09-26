@@ -2,7 +2,7 @@ import { Response } from 'express';
 import { prisma } from '../config';
 import { sendErrorResponse, sendSuccessResponse, appErrorResponse } from '../utils';
 import { AuthenticatedRequest } from '../middlewares';
-import { uploadFile, createNotification } from '../services';
+import { uploadFile, deleteFiles, createNotification } from '../services';
 import { NotificationType, PostMediaType } from '@prisma/client';
 
 const createPost = async (req: AuthenticatedRequest, res: Response) => {
@@ -65,6 +65,114 @@ const createPost = async (req: AuthenticatedRequest, res: Response) => {
       'Post created successfully'
     );
   } catch (error) {
+    return appErrorResponse(res, error as Error);
+  }
+};
+
+const updatePost = async (req: AuthenticatedRequest, res: Response) => {
+  const uploadedUrls: string[] = [];
+  try {
+    const { id } = req.params;
+    const currentUserId = req.user!.id;
+    const { caption, retainedMediaIds: retainedMediaIdsValue } = req.body;
+    const files = req.files as Express.Multer.File[] | undefined;
+    const post = await prisma.post.findUnique({
+      where: { id: id as string },
+      include: { media: { orderBy: { order: 'asc' } } },
+    });
+
+    if (!post) return sendErrorResponse(res, 404, 'Post not found');
+    if (post.userId !== currentUserId) {
+      return sendErrorResponse(res, 403, 'You are not authorized to edit this post');
+    }
+
+    let retainedMediaIds: string[];
+    try {
+      retainedMediaIds = JSON.parse(retainedMediaIdsValue);
+    } catch {
+      return sendErrorResponse(res, 400, 'Invalid media selection');
+    }
+
+    const existingMedia = new Map(post.media.map((media) => [media.id, media]));
+    if (
+      !Array.isArray(retainedMediaIds) ||
+      retainedMediaIds.some((mediaId) => typeof mediaId !== 'string' || !existingMedia.has(mediaId))
+    ) {
+      return sendErrorResponse(res, 400, 'Invalid media selection');
+    }
+    if (retainedMediaIds.length + (files?.length || 0) === 0) {
+      return sendErrorResponse(res, 400, 'A post must contain at least one image');
+    }
+    if (retainedMediaIds.length + (files?.length || 0) > 10) {
+      return sendErrorResponse(res, 400, 'A post can contain at most 10 images');
+    }
+
+    const newMedia: { url: string; mediaType: PostMediaType; order: number }[] = [];
+    for (const [index, file] of (files || []).entries()) {
+      const uploaded = await uploadFile(
+        file.buffer,
+        `posts/${currentUserId}/${Date.now()}-${index}-${file.originalname}`,
+        file.mimetype
+      );
+      uploadedUrls.push(uploaded.url);
+      newMedia.push({
+        url: uploaded.url,
+        mediaType: PostMediaType.IMAGE,
+        order: retainedMediaIds.length + index,
+      });
+    }
+
+    const removedUrls = post.media
+      .filter((media) => !retainedMediaIds.includes(media.id))
+      .map((media) => media.url);
+
+    const updatedPost = await prisma.$transaction(async (transaction) => {
+      await transaction.postMedia.deleteMany({
+        where: { postId: post.id, id: { notIn: retainedMediaIds } },
+      });
+      await Promise.all(
+        retainedMediaIds.map((mediaId, order) =>
+          transaction.postMedia.update({ where: { id: mediaId }, data: { order } })
+        )
+      );
+      if (newMedia.length > 0) {
+        await transaction.postMedia.createMany({
+          data: newMedia.map((media) => ({ ...media, postId: post.id })),
+        });
+      }
+      return transaction.post.update({
+        where: { id: post.id },
+        data: caption === undefined ? {} : { caption: caption || null },
+        include: {
+          media: { orderBy: { order: 'asc' } },
+          user: {
+            select: {
+              id: true,
+              userName: true,
+              firstName: true,
+              lastName: true,
+              profileImage: true,
+            },
+          },
+        },
+      });
+    });
+
+    try {
+      await deleteFiles(removedUrls);
+    } catch (deleteError) {
+      console.error('Failed to remove replaced post media from blob storage', deleteError);
+    }
+
+    return sendSuccessResponse(res, 200, updatedPost, 'Post updated successfully');
+  } catch (error) {
+    if (uploadedUrls.length > 0) {
+      try {
+        await deleteFiles(uploadedUrls);
+      } catch {
+        // Preserve the original update error.
+      }
+    }
     return appErrorResponse(res, error as Error);
   }
 };
@@ -161,6 +269,161 @@ const getUserPosts = async (req: AuthenticatedRequest, res: Response) => {
     const skip = (page - 1) * limit;
 
     const [total, posts] = await Promise.all([
+      prisma.post.count({ where: { userId: userId as string } }),
+      prisma.post.findMany({
+        where: { userId: userId as string },
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          media: { orderBy: { order: 'asc' } },
+          user: { select: { id: true, userName: true, firstName: true, lastName: true, profileImage: true } },
+          _count: { select: { likes: true, comments: true } },
+          likes: { where: { userId: currentUserId }, select: { id: true } },
+        },
+      }),
+    ]);
+
+    const formattedPosts = posts.map((post) => {
+      const { likes, _count, ...postData } = post;
+      return { ...postData, likesCount: _count.likes, commentsCount: _count.comments, isLiked: likes.length > 0 };
+    });
+    const totalPages = Math.ceil(total / limit);
+    return sendSuccessResponse(res, 200, {
+      items: formattedPosts,
+      pagination: { page, limit, total, totalPages, hasNextPage: page < totalPages, hasPrevPage: page > 1 },
+    }, 'User posts retrieved successfully');
+  } catch (error) {
+    return appErrorResponse(res, error as Error);
+  }
+};
+
+const getFeed = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { userId } = req.params;
+    const currentUserId = req.user!.id;
+    const page = Math.max(1, parseInt((req.query.page as string) || '1', 10));
+    const limit = Math.max(1, Math.min(100, parseInt((req.query.limit as string) || '10', 10)));
+    const skip = (page - 1) * limit;
+    
+      const following = await prisma.follow.findMany({
+        where: { followerId: currentUserId },
+        select: { followingId: true },
+      });
+      const followingIds = [currentUserId, ...following.map((follow) => follow.followingId)];
+
+    const [posts, reels] = await Promise.all([
+      prisma.post.findMany({
+        where: { userId: { in: followingIds } },
+        orderBy: { createdAt: 'desc' },
+        include: {
+          media: {
+            orderBy: { order: 'asc' },
+          },
+          user: {
+            select: {
+              id: true,
+              userName: true,
+              firstName: true,
+              lastName: true,
+              profileImage: true,
+            },
+          },
+          _count: {
+            select: {
+              likes: true,
+              comments: true,
+            },
+          },
+          likes: {
+            where: { userId: currentUserId },
+            select: { id: true },
+          },
+        },
+      }),
+      prisma.reel.findMany({
+        where: { userId: { in: followingIds } },
+        orderBy: { createdAt: 'desc' },
+        include: {
+          media: {
+            orderBy: { order: 'asc' },
+          },
+          user: {
+            select: {
+              id: true,
+              userName: true,
+              firstName: true,
+              lastName: true,
+              profileImage: true,
+            },
+          },
+          _count: {
+            select: {
+              likes: true,
+              comments: true,
+            },
+          },
+          likes: {
+            where: { userId: currentUserId },
+            select: { id: true },
+          },
+        },
+      }),
+    ]);
+
+    const formattedPosts = posts.map((post) => {
+      const { likes, _count, ...postData } = post;
+      return {
+        ...postData,
+        contentType: 'post' as const,
+        likesCount: _count.likes,
+        commentsCount: _count.comments,
+        isLiked: likes.length > 0,
+      };
+    });
+
+    const formattedReels = reels.map((reel) => {
+      const { likes, _count, videoUrl, thumbnailUrl, ...reelData } = reel;
+      return {
+        ...reelData,
+        contentType: 'reel' as const,
+        media: reel.media.length > 0 ? reel.media : [{ id: reel.id, url: videoUrl, mediaType: 'VIDEO', order: 0 }],
+        thumbnailUrl,
+        likesCount: _count.likes,
+        commentsCount: _count.comments,
+        isLiked: likes.length > 0,
+      };
+    });
+
+    const items = [...formattedPosts, ...formattedReels]
+      .sort((first, second) => second.createdAt.getTime() - first.createdAt.getTime())
+      .slice(skip, skip + limit);
+    const total = formattedPosts.length + formattedReels.length;
+    const totalPages = Math.ceil(total / limit);
+
+    return sendSuccessResponse(
+      res,
+      200,
+      {
+        items,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages,
+          hasNextPage: page < totalPages,
+          hasPrevPage: page > 1,
+        },
+      },
+      'Feed retrieved successfully'
+    );
+  } catch (error) {
+    return appErrorResponse(res, error as Error);
+  }
+};
+
+/*
+    const [total, posts] = await Promise.all([
       prisma.post.count({
         where: { userId: userId as string },
       }),
@@ -228,8 +491,9 @@ const getUserPosts = async (req: AuthenticatedRequest, res: Response) => {
     return appErrorResponse(res, error as Error);
   }
 };
+*/
 
-const getFeed = async (req: AuthenticatedRequest, res: Response) => {
+const getFeedLegacy = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const currentUserId = req.user!.id;
     const page = Math.max(1, parseInt((req.query.page as string) || '1', 10));
@@ -242,26 +506,7 @@ const getFeed = async (req: AuthenticatedRequest, res: Response) => {
       select: { followingId: true },
     });
 
-    const followingIds = following.map((f) => f.followingId);
-
-    if (followingIds.length === 0) {
-      return sendSuccessResponse(
-        res,
-        200,
-        {
-          items: [],
-          pagination: {
-            page,
-            limit,
-            total: 0,
-            totalPages: 0,
-            hasNextPage: false,
-            hasPrevPage: false,
-          },
-        },
-        'Feed retrieved successfully'
-      );
-    }
+    const followingIds = [currentUserId, ...following.map((f) => f.followingId)];
 
     const [total, posts] = await Promise.all([
       prisma.post.count({
@@ -554,6 +799,7 @@ const deleteComment = async (req: AuthenticatedRequest, res: Response) => {
 
 export {
   createPost,
+  updatePost,
   deletePost,
   getPost,
   getUserPosts,

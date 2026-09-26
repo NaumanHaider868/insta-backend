@@ -2,7 +2,7 @@ import { Response } from 'express';
 import { prisma } from '../config';
 import { sendErrorResponse, sendSuccessResponse, appErrorResponse } from '../utils';
 import { AuthenticatedRequest } from '../middlewares';
-import { uploadFile, createNotification } from '../services';
+import { uploadFile, deleteFiles, createNotification } from '../services';
 import { NotificationType } from '@prisma/client';
 
 const uploadReel = async (req: AuthenticatedRequest, res: Response) => {
@@ -11,13 +11,10 @@ const uploadReel = async (req: AuthenticatedRequest, res: Response) => {
     const { caption } = req.body;
     const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
 
-    const videoFile = files?.['video']?.[0];
-    if (!videoFile) {
+    const videoFiles = files?.['video'] || [];
+    if (videoFiles.length === 0) {
       return sendErrorResponse(res, 400, 'Video file is required');
     }
-
-    const videoBlobPath = `reels/${currentUserId}/${Date.now()}-${videoFile.originalname}`;
-    const videoUpload = await uploadFile(videoFile.buffer, videoBlobPath, videoFile.mimetype);
 
     let thumbnailUrl: string | null = null;
     const thumbnailFile = files?.['thumbnail']?.[0];
@@ -31,14 +28,27 @@ const uploadReel = async (req: AuthenticatedRequest, res: Response) => {
       thumbnailUrl = thumbUpload.url;
     }
 
+    const uploadedVideos = [];
+    for (const [index, videoFile] of videoFiles.entries()) {
+      const videoBlobPath = `reels/${currentUserId}/${Date.now()}-${index}-${videoFile.originalname}`;
+      const videoUpload = await uploadFile(videoFile.buffer, videoBlobPath, videoFile.mimetype);
+      uploadedVideos.push({ url: videoUpload.url, order: index });
+    }
+
     const reel = await prisma.reel.create({
       data: {
         userId: currentUserId,
-        videoUrl: videoUpload.url,
+        videoUrl: uploadedVideos[0].url,
         thumbnailUrl,
         caption: caption || null,
+        media: {
+          create: uploadedVideos,
+        },
       },
       include: {
+        media: {
+          orderBy: { order: 'asc' },
+        },
         user: {
           select: {
             id: true,
@@ -50,19 +60,130 @@ const uploadReel = async (req: AuthenticatedRequest, res: Response) => {
         },
       },
     });
+    const responseReel = {
+      ...reel,
+      likesCount: 0,
+      commentsCount: 0,
+      isLiked: false,
+    };
 
     return sendSuccessResponse(
       res,
       201,
-      {
-        ...reel,
-        likesCount: 0,
-        commentsCount: 0,
-        isLiked: false,
-      },
-      'Reel uploaded successfully'
+      responseReel,
+      `${uploadedVideos.length} video${uploadedVideos.length === 1 ? '' : 's'} uploaded as one reel`
     );
   } catch (error) {
+    return appErrorResponse(res, error as Error);
+  }
+};
+
+const updateReel = async (req: AuthenticatedRequest, res: Response) => {
+  const uploadedUrls: string[] = [];
+  try {
+    const { id } = req.params;
+    const currentUserId = req.user!.id;
+    const { caption, retainedMediaIds: retainedMediaIdsValue } = req.body;
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+    const videoFiles = files?.['video'] || [];
+    const reel = await prisma.reel.findUnique({
+      where: { id: id as string },
+      include: { media: { orderBy: { order: 'asc' } } },
+    });
+
+    if (!reel) return sendErrorResponse(res, 404, 'Reel not found');
+    if (reel.userId !== currentUserId) {
+      return sendErrorResponse(res, 403, 'You are not authorized to edit this reel');
+    }
+
+    let retainedMediaIds: string[];
+    try {
+      retainedMediaIds = JSON.parse(retainedMediaIdsValue);
+    } catch {
+      return sendErrorResponse(res, 400, 'Invalid media selection');
+    }
+
+    const existingMedia = new Map(reel.media.map((media) => [media.id, media]));
+    if (
+      !Array.isArray(retainedMediaIds) ||
+      retainedMediaIds.some((mediaId) => typeof mediaId !== 'string' || !existingMedia.has(mediaId))
+    ) {
+      return sendErrorResponse(res, 400, 'Invalid media selection');
+    }
+    if (retainedMediaIds.length + videoFiles.length === 0) {
+      return sendErrorResponse(res, 400, 'A reel must contain at least one video');
+    }
+    if (retainedMediaIds.length + videoFiles.length > 10) {
+      return sendErrorResponse(res, 400, 'A reel can contain at most 10 videos');
+    }
+
+    const newMedia: { url: string; order: number }[] = [];
+    for (const [index, file] of videoFiles.entries()) {
+      const uploaded = await uploadFile(
+        file.buffer,
+        `reels/${currentUserId}/${Date.now()}-${index}-${file.originalname}`,
+        file.mimetype
+      );
+      uploadedUrls.push(uploaded.url);
+      newMedia.push({ url: uploaded.url, order: retainedMediaIds.length + index });
+    }
+
+    const retainedMedia = retainedMediaIds.map((mediaId) => existingMedia.get(mediaId)!);
+    const firstVideoUrl = retainedMedia[0]?.url || newMedia[0].url;
+    const removedUrls = reel.media
+      .filter((media) => !retainedMediaIds.includes(media.id))
+      .map((media) => media.url);
+
+    const updatedReel = await prisma.$transaction(async (transaction) => {
+      await transaction.reelMedia.deleteMany({
+        where: { reelId: reel.id, id: { notIn: retainedMediaIds } },
+      });
+      await Promise.all(
+        retainedMediaIds.map((mediaId, order) =>
+          transaction.reelMedia.update({ where: { id: mediaId }, data: { order } })
+        )
+      );
+      if (newMedia.length > 0) {
+        await transaction.reelMedia.createMany({
+          data: newMedia.map((media) => ({ ...media, reelId: reel.id })),
+        });
+      }
+      return transaction.reel.update({
+        where: { id: reel.id },
+        data: {
+          videoUrl: firstVideoUrl,
+          ...(caption === undefined ? {} : { caption: caption || null }),
+        },
+        include: {
+          media: { orderBy: { order: 'asc' } },
+          user: {
+            select: {
+              id: true,
+              userName: true,
+              firstName: true,
+              lastName: true,
+              profileImage: true,
+            },
+          },
+        },
+      });
+    });
+
+    try {
+      await deleteFiles(removedUrls);
+    } catch (deleteError) {
+      console.error('Failed to remove replaced reel media from blob storage', deleteError);
+    }
+
+    return sendSuccessResponse(res, 200, updatedReel, 'Reel updated successfully');
+  } catch (error) {
+    if (uploadedUrls.length > 0) {
+      try {
+        await deleteFiles(uploadedUrls);
+      } catch {
+        // Preserve the original update error.
+      }
+    }
     return appErrorResponse(res, error as Error);
   }
 };
@@ -165,6 +286,7 @@ const getUserReels = async (req: AuthenticatedRequest, res: Response) => {
         take: limit,
         orderBy: { createdAt: 'desc' },
         include: {
+          media: { orderBy: { order: 'asc' } },
           user: {
             select: {
               id: true,
@@ -228,38 +350,9 @@ const getReelsFeed = async (req: AuthenticatedRequest, res: Response) => {
     const limit = Math.max(1, Math.min(100, parseInt((req.query.limit as string) || '10', 10)));
     const skip = (page - 1) * limit;
 
-    const following = await prisma.follow.findMany({
-      where: { followerId: currentUserId },
-      select: { followingId: true },
-    });
-
-    const followingIds = following.map((f) => f.followingId);
-
-    if (followingIds.length === 0) {
-      return sendSuccessResponse(
-        res,
-        200,
-        {
-          items: [],
-          pagination: {
-            page,
-            limit,
-            total: 0,
-            totalPages: 0,
-            hasNextPage: false,
-            hasPrevPage: false,
-          },
-        },
-        'Reels feed retrieved successfully'
-      );
-    }
-
     const [total, reels] = await Promise.all([
-      prisma.reel.count({
-        where: { userId: { in: followingIds } },
-      }),
+      prisma.reel.count(),
       prisma.reel.findMany({
-        where: { userId: { in: followingIds } },
         skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
@@ -541,6 +634,7 @@ const deleteReelComment = async (req: AuthenticatedRequest, res: Response) => {
 
 export {
   uploadReel,
+  updateReel,
   deleteReel,
   getReel,
   getUserReels,

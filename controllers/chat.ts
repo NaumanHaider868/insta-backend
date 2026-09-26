@@ -32,12 +32,14 @@ const sendMessage = async (
       return sendErrorResponse(res, 400, 'Receiver is not verified');
     }
 
+    const io = getIO();
+    const isReceived = Boolean(io?.sockets.adapter.rooms.get(`user:${receiverId}`)?.size);
     const message = await prisma.message.create({
       data: {
         content,
         senderId,
         receiverId,
-        isReceived: true,
+        isReceived,
       },
       include: {
         sender: {
@@ -46,6 +48,9 @@ const sendMessage = async (
             userName: true,
             firstName: true,
             lastName: true,
+            profileImage: true,
+            isOnline: true,
+            lastSeen: true,
           },
         },
         receiver: {
@@ -54,15 +59,23 @@ const sendMessage = async (
             userName: true,
             firstName: true,
             lastName: true,
+            profileImage: true,
+            isOnline: true,
+            lastSeen: true,
           },
         },
       },
     });
 
-    const io = getIO();
     if (io) {
       io.to(`user:${receiverId}`).emit('message:receive', message);
       io.to(`user:${senderId}`).emit('message:sent', message);
+      if (isReceived) {
+        io.to(`user:${senderId}`).emit('message:delivered', {
+          messageId: message.id,
+          receiverId,
+        });
+      }
     }
 
     await createNotification({
@@ -115,6 +128,7 @@ const getConversation = async (req: AuthenticatedRequest, res: Response) => {
             userName: true,
             firstName: true,
             lastName: true,
+            profileImage: true,
           },
         },
         receiver: {
@@ -123,23 +137,12 @@ const getConversation = async (req: AuthenticatedRequest, res: Response) => {
             userName: true,
             firstName: true,
             lastName: true,
+            profileImage: true,
           },
         },
       },
       orderBy: {
         createdAt: 'asc',
-      },
-    });
-
-    // Mark messages as read where current user is receiver
-    await prisma.message.updateMany({
-      where: {
-        senderId: userId as string,
-        receiverId: currentUserId,
-        isRead: false,
-      },
-      data: {
-        isRead: true,
       },
     });
 
@@ -164,6 +167,9 @@ const getConversations = async (req: AuthenticatedRequest, res: Response) => {
             userName: true,
             firstName: true,
             lastName: true,
+            profileImage: true,
+            isOnline: true,
+            lastSeen: true,
           },
         },
         receiver: {
@@ -172,6 +178,9 @@ const getConversations = async (req: AuthenticatedRequest, res: Response) => {
             userName: true,
             firstName: true,
             lastName: true,
+            profileImage: true,
+            isOnline: true,
+            lastSeen: true,
           },
         },
       },
@@ -181,7 +190,18 @@ const getConversations = async (req: AuthenticatedRequest, res: Response) => {
     });
 
     // Group messages by conversation partner and get the latest message for each
-    const conversations = new Map();
+    const conversations = new Map<string, {
+      user: typeof messages[number]['sender'];
+      lastMessage: {
+        id: string;
+        content: string;
+        isRead: boolean;
+        createdAt: string;
+        senderId: string;
+        receiverId: string;
+      };
+      unreadCount: number;
+    }>();
 
     for (const message of messages) {
       const partnerId = message.senderId === currentUserId ? message.receiverId : message.senderId;
@@ -198,7 +218,12 @@ const getConversations = async (req: AuthenticatedRequest, res: Response) => {
             senderId: message.senderId,
             receiverId: message.receiverId,
           },
+          unreadCount: 0,
         });
+      }
+
+      if (message.receiverId === currentUserId && !message.isRead) {
+        conversations.get(partnerId)!.unreadCount += 1;
       }
     }
 
@@ -210,4 +235,41 @@ const getConversations = async (req: AuthenticatedRequest, res: Response) => {
   }
 };
 
-export { sendMessage, getConversation, getConversations };
+const searchUsers = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const currentUserId = req.user!.id;
+    const query = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+    if (query.length < 2) {
+      return sendSuccessResponse(res, 200, { items: [] }, 'Enter at least two characters');
+    }
+
+    const users = await prisma.users.findMany({
+      where: {
+        id: { not: currentUserId },
+        isVerified: true,
+        OR: [
+          { userName: { contains: query } },
+          { firstName: { contains: query } },
+          { lastName: { contains: query } },
+        ],
+      },
+      take: 20,
+      orderBy: { userName: 'asc' },
+      select: {
+        id: true,
+        userName: true,
+        firstName: true,
+        lastName: true,
+        profileImage: true,
+        isOnline: true,
+        lastSeen: true,
+      },
+    });
+
+    return sendSuccessResponse(res, 200, { items: users }, 'Users retrieved successfully');
+  } catch (error) {
+    return appErrorResponse(res, error as Error);
+  }
+};
+
+export { sendMessage, getConversation, getConversations, searchUsers };

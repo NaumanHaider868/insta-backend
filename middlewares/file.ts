@@ -12,16 +12,12 @@ const ALLOWED_VIDEO_TYPES = [
   'video/mkv',
 ];
 
-const maxVideoSizeMb = process.env.MAX_VIDEO_SIZE_MB
-  ? parseInt(process.env.MAX_VIDEO_SIZE_MB, 10)
-  : 100;
-const MAX_VIDEO_SIZE = maxVideoSizeMb * 1024 * 1024;
-const MAX_IMAGE_SIZE = 15 * 1024 * 1024;
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 const upload = multer({
   storage,
   limits: {
-    fileSize: MAX_IMAGE_SIZE,
+    fileSize: MAX_FILE_SIZE,
   },
   fileFilter: (_req: Request, file: Express.Multer.File, cb: FileFilterCallback) => {
     if (ALLOWED_IMAGE_TYPES.includes(file.mimetype)) {
@@ -35,7 +31,7 @@ const upload = multer({
 const uploadVideo = multer({
   storage,
   limits: {
-    fileSize: MAX_VIDEO_SIZE,
+    fileSize: MAX_FILE_SIZE,
   },
   fileFilter: (_req: Request, file: Express.Multer.File, cb: FileFilterCallback) => {
     if (file.fieldname === 'video') {
