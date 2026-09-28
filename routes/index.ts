@@ -7,6 +7,7 @@ import follow from './follow';
 import post from './post';
 import reel from './reel';
 import notification from './notification';
+import story from './story';
 
 const routes = Object.freeze({
   auth: [auth],
@@ -20,6 +21,8 @@ const routes = Object.freeze({
   reels: [reel],
   notification: [notification],
   notifications: [notification],
+  story: [story],
+  stories: [story],
 });
 
 /**

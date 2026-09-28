@@ -27,7 +27,7 @@ const validationSchema = {
   [PostSchema.Get_User_Posts]: Joi.object({
     userId: Joi.string().uuid().required(),
     page: Joi.number().integer().min(1).optional(),
-    limit: Joi.number().integer().min(1).max(100).optional(),
+    limit: Joi.number().integer().min(1).max(10).optional(),
   }),
   [PostSchema.Pagination_Query]: Joi.object({
     page: Joi.number().integer().min(1).optional(),

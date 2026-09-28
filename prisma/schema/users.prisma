@@ -37,6 +37,10 @@ model Users {
     reelLikes    ReelLike[]
     reelComments ReelComment[]
 
+    // Relations for stories
+    stories    Story[]
+    storyViews StoryView[] @relation("StoryViewer")
+
     // Relations for notifications
     notifications         Notification[] @relation("UserNotifications")
     triggeredNotifications Notification[] @relation("ActorNotifications")

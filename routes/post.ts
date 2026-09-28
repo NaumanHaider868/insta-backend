@@ -33,7 +33,7 @@ router.put(
   updatePost
 );
 router.get('/feed', getFeed);
-router.get('/user/:userId', getUserPosts);
+router.get('/user', getUserPosts);
 router.delete('/comment/:commentId', deleteComment);
 
 router.get('/:id', getPost);

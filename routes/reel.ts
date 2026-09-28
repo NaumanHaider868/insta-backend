@@ -22,7 +22,7 @@ router.use(authenticate);
 router.post(
   '/',
   uploadVideo.fields([
-    { name: 'video', maxCount: 10 },
+    { name: 'video', maxCount: 1 },
     { name: 'thumbnail', maxCount: 1 },
   ]),
   reelValidator.getMiddleware(ReelSchema.Create_Reel),
@@ -31,7 +31,7 @@ router.post(
 router.put(
   '/:id',
   uploadVideo.fields([
-    { name: 'video', maxCount: 10 },
+    { name: 'video', maxCount: 1 },
     { name: 'thumbnail', maxCount: 1 },
   ]),
   reelValidator.getMiddleware(ReelSchema.Update_Reel),
