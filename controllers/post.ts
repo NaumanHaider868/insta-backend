@@ -262,16 +262,15 @@ const getPost = async (req: AuthenticatedRequest, res: Response) => {
 
 const getUserPosts = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { userId } = req.params;
     const currentUserId = req.user!.id;
     const page = Math.max(1, parseInt((req.query.page as string) || '1', 10));
-    const limit = Math.max(1, Math.min(100, parseInt((req.query.limit as string) || '10', 10)));
+    const limit = Math.max(1, Math.min(10, parseInt((req.query.limit as string) || '10', 10)));
     const skip = (page - 1) * limit;
 
     const [total, posts] = await Promise.all([
-      prisma.post.count({ where: { userId: userId as string } }),
+      prisma.post.count({ where: { userId: currentUserId } }),
       prisma.post.findMany({
-        where: { userId: userId as string },
+        where: { userId: currentUserId },
         skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
@@ -320,6 +319,19 @@ const getFeed = async (req: AuthenticatedRequest, res: Response) => {
           media: {
             orderBy: { order: 'asc' },
           },
+          comments: {
+            take: 3,
+            orderBy: { createdAt: 'desc' },
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  userName: true,
+                  profileImage: true,
+                },
+              },
+            },
+          },
           user: {
             select: {
               id: true,
@@ -347,6 +359,19 @@ const getFeed = async (req: AuthenticatedRequest, res: Response) => {
         include: {
           media: {
             orderBy: { order: 'asc' },
+          },
+          comments: {
+            take: 3,
+            orderBy: { createdAt: 'desc' },
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  userName: true,
+                  profileImage: true,
+                },
+              },
+            },
           },
           user: {
             select: {

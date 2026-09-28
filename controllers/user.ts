@@ -100,26 +100,45 @@ const uploadProfile = async (req: RequestWithFormData<ProfileUpdateFormData>, re
 const getSuggestions = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const currentUserId = req.user!.id;
+    const page = Math.max(1, parseInt((req.query.page as string) || '1', 10));
+    const limit = Math.max(1, Math.min(50, parseInt((req.query.limit as string) || '5', 10)));
+    const requestedOffset = parseInt((req.query.offset as string) || '', 10);
+    const skip = Number.isNaN(requestedOffset) ? (page - 1) * limit : Math.max(0, requestedOffset);
     const following = await prisma.follow.findMany({
       where: { followerId: currentUserId },
       select: { followingId: true },
     });
     const excludedIds = [currentUserId, ...following.map(({ followingId }) => followingId)];
-    const candidates = await prisma.users.findMany({
-      where: { id: { notIn: excludedIds }, isVerified: true },
-      take: 50,
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        userName: true,
-        firstName: true,
-        lastName: true,
-        profileImage: true,
+    const where = { id: { notIn: excludedIds }, isVerified: true };
+    const [total, items] = await Promise.all([
+      prisma.users.count({ where }),
+      prisma.users.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          userName: true,
+          firstName: true,
+          lastName: true,
+          profileImage: true,
+        },
+      }),
+    ]);
+    const totalPages = Math.ceil(total / limit);
+    return sendSuccessResponse(res, 200, {
+      items,
+      pagination: {
+        page,
+        offset: skip,
+        limit,
+        total,
+        totalPages,
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1,
       },
-    });
-
-    const items = candidates.sort(() => Math.random() - 0.5).slice(0, 5);
-    return sendSuccessResponse(res, 200, { items }, 'Suggestions retrieved successfully');
+    }, 'Suggestions retrieved successfully');
   } catch (error) {
     return appErrorResponse(res, error);
   }

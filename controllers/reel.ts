@@ -15,6 +15,9 @@ const uploadReel = async (req: AuthenticatedRequest, res: Response) => {
     if (videoFiles.length === 0) {
       return sendErrorResponse(res, 400, 'Video file is required');
     }
+    if (videoFiles.length > 1) {
+      return sendErrorResponse(res, 400, 'A reel can contain only one video');
+    }
 
     let thumbnailUrl: string | null = null;
     const thumbnailFile = files?.['thumbnail']?.[0];
@@ -113,8 +116,8 @@ const updateReel = async (req: AuthenticatedRequest, res: Response) => {
     if (retainedMediaIds.length + videoFiles.length === 0) {
       return sendErrorResponse(res, 400, 'A reel must contain at least one video');
     }
-    if (retainedMediaIds.length + videoFiles.length > 10) {
-      return sendErrorResponse(res, 400, 'A reel can contain at most 10 videos');
+    if (retainedMediaIds.length + videoFiles.length > 1) {
+      return sendErrorResponse(res, 400, 'A reel can contain only one video');
     }
 
     const newMedia: { url: string; order: number }[] = [];
@@ -273,7 +276,7 @@ const getUserReels = async (req: AuthenticatedRequest, res: Response) => {
     const { userId } = req.params;
     const currentUserId = req.user!.id;
     const page = Math.max(1, parseInt((req.query.page as string) || '1', 10));
-    const limit = Math.max(1, Math.min(100, parseInt((req.query.limit as string) || '10', 10)));
+    const limit = Math.max(1, Math.min(10, parseInt((req.query.limit as string) || '10', 10)));
     const skip = (page - 1) * limit;
 
     const [total, reels] = await Promise.all([

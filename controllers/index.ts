@@ -5,3 +5,4 @@ export * from './follow';
 export * from './post';
 export * from './reel';
 export * from './notification';
+export * from './story';

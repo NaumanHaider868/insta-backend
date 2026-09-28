@@ -52,4 +52,18 @@ const uploadVideo = multer({
   },
 });
 
-export { upload, uploadVideo };
+const uploadStory = multer({
+  storage,
+  limits: {
+    fileSize: MAX_FILE_SIZE,
+  },
+  fileFilter: (_req: Request, file: Express.Multer.File, cb: FileFilterCallback) => {
+    if (ALLOWED_IMAGE_TYPES.includes(file.mimetype) || ALLOWED_VIDEO_TYPES.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Stories must be a supported image or video'));
+    }
+  },
+});
+
+export { upload, uploadVideo, uploadStory };
