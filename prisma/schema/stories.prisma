@@ -1,0 +1,35 @@
+enum StoryType {
+    IMAGE
+    VIDEO
+    TEXT
+}
+
+model Story {
+    id        String    @id @default(uuid())
+    userId    String
+    type      StoryType
+    mediaUrl  String?   @db.Text
+    text      String?   @db.Text
+    background String?  @default("#1e3a8a")
+    createdAt DateTime  @default(now())
+    expiresAt DateTime
+
+    user  Users       @relation(fields: [userId], references: [id], onDelete: Cascade)
+    views StoryView[]
+
+    @@index([userId, expiresAt])
+    @@index([expiresAt])
+}
+
+model StoryView {
+    id       String   @id @default(uuid())
+    storyId  String
+    viewerId String
+    viewedAt DateTime @default(now())
+
+    story  Story @relation(fields: [storyId], references: [id], onDelete: Cascade)
+    viewer Users @relation("StoryViewer", fields: [viewerId], references: [id], onDelete: Cascade)
+
+    @@unique([storyId, viewerId])
+    @@index([viewerId])
+}
