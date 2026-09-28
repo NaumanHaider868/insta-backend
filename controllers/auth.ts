@@ -44,7 +44,7 @@ const register = async (req: RequestWithBody<RegisterPayload>, res: Response) =>
     const [emailVerificationToken, verificationCheckToken] = [
       getJWTToken(
         { id: user.id },
-        { expiresIn: '1min', reference: TokenIdentifier.EmailVerification }
+        { expiresIn: '10min', reference: TokenIdentifier.EmailVerification }
       ),
       getJWTToken(
         { id: user.id },
