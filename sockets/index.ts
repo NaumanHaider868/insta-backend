@@ -30,6 +30,7 @@ const getIO = (): Server | null => {
 
 const initSocketIO = (httpServer: HttpServer): Server => {
   io = new Server(httpServer, {
+    path: '/api/socket-io/socket.io',
     cors: {
       origin: process.env.CLIENT_URL || 'http://localhost:5173',
       credentials: true,
