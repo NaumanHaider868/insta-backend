@@ -51,7 +51,7 @@ const register = async (req: RequestWithBody<RegisterPayload>, res: Response) =>
         { expiresIn: '10min', reference: TokenIdentifier.VerificationCheck }
       ),
     ];
-    const verificationUrl = `${process.env.FRONTEND_BASE_URL}/verify-email?token=${emailVerificationToken}`;
+    const verificationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${emailVerificationToken}`;
     await safeSendMail({
       from: process.env.MAIL_FROM,
       to: email,
@@ -106,7 +106,7 @@ const login = async (req: RequestWithBody<LoginPayload>, res: Response) => {
         { expiresIn: '10m', reference: TokenIdentifier.EmailVerification }
       );
 
-      const verificationUrl = `${process.env.FRONTEND_BASE_URL}/verify-email?token=${emailVerificationToken}`;
+      const verificationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${emailVerificationToken}`;
 
       await safeSendMail({
         from: process.env.MAIL_FROM,
@@ -234,7 +234,7 @@ const resendVerificationEmail = async (
       { expiresIn: '10min', reference: TokenIdentifier.EmailVerification }
     );
 
-      const verificationUrl = `${process.env.FRONTEND_BASE_URL}/verify-email?token=${verificationToken}`;
+      const verificationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
 
     await safeSendMail({
       from: process.env.MAIL_FROM,
@@ -278,7 +278,7 @@ const forgetPasswordEmail = async (
       html: `
         <h2>Password Reset Request</h2>
         <p>We received a request to reset the password for your Union account. If this was you, click the button below to reset your password:</p>
-        <a href="${process.env.CLIENT_URL}/reset-password?token=${token}" 
+        <a href="${process.env.FRONTEND_URL}/reset-password?token=${token}" 
            style="padding: 10px 20px; background-color: #000; color: #fff; text-decoration: none; border-radius: 5px;">
            Reset Password
         </a>
