@@ -31,6 +31,7 @@ const seenMessageIds = new Set<string>();
 const seenNotificationIds = new Set<string>();
 const presenceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const deliveredSweepAt = new Map<string, number>();
+const lastHeartbeat = new Map<string, number>();
 
 const chatUserSelect = {
   id: true,
@@ -51,28 +52,65 @@ const schedulePresence = (userId: string) => {
   const existingTimer = presenceTimers.get(userId);
   if (existingTimer) clearTimeout(existingTimer);
 
+  const isOnline = Boolean(userSocketsMap.get(userId)?.size);
   const timer = setTimeout(() => {
     presenceTimers.delete(userId);
-    const isOnline = Boolean(userSocketsMap.get(userId)?.size);
-    const lastSeen = new Date();
+    const stillOnline = Boolean(userSocketsMap.get(userId)?.size);
+
+    if (stillOnline) {
+      const lastSeen = new Date();
+      lastHeartbeat.set(userId, lastSeen.getTime());
+      void prisma.users
+        .update({
+          where: { id: userId },
+          data: { isOnline: true, lastSeen },
+        })
+        .then(() => {
+          io?.emit('user:presence', {
+            userId,
+            isOnline: true,
+            lastSeen: lastSeen.toISOString(),
+          });
+        })
+        .catch((error) => {
+          console.error('presence update failed', error);
+        });
+      return;
+    }
+
+    const cutoff = new Date(Date.now() - 20000);
     void prisma.users
-      .update({
-        where: { id: userId },
-        data: { isOnline, lastSeen },
+      .updateMany({
+        where: { id: userId, lastSeen: { lt: cutoff } },
+        data: { isOnline: false },
       })
-      .then(() => {
+      .then((result) => {
+        if (!result.count) return;
         io?.emit('user:presence', {
           userId,
-          isOnline,
-          lastSeen: lastSeen.toISOString(),
+          isOnline: false,
+          lastSeen: new Date().toISOString(),
         });
       })
       .catch((error) => {
         console.error('presence update failed', error);
       });
-  }, 2000);
+  }, isOnline ? 1000 : 25000);
 
   presenceTimers.set(userId, timer);
+};
+
+const refreshOnlineUsers = async (userIds: string[]) => {
+  const now = Date.now();
+  const due = userIds.filter((userId) => now - (lastHeartbeat.get(userId) || 0) > 15000);
+  if (!due.length) return;
+
+  const lastSeen = new Date();
+  await prisma.users.updateMany({
+    where: { id: { in: due } },
+    data: { isOnline: true, lastSeen },
+  });
+  due.forEach((userId) => lastHeartbeat.set(userId, now));
 };
 
 const relaySocketEvents = async () => {
@@ -81,6 +119,8 @@ const relaySocketEvents = async () => {
   relayRunning = true;
 
   try {
+    await refreshOnlineUsers(userIds);
+
     const messages = await prisma.message.findMany({
       where: {
         createdAt: { gte: messageCursor },
