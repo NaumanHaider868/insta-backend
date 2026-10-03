@@ -23,6 +23,91 @@ interface CustomSocket extends Socket {
 let io: Server | null = null;
 const userSocketsMap = new Map<string, Set<string>>();
 const userActiveConversationMap = new Map<string, string>();
+let relayStarted = false;
+let messageCursor = new Date();
+let notificationCursor = new Date();
+const seenMessageIds = new Set<string>();
+const seenNotificationIds = new Set<string>();
+
+const chatUserSelect = {
+  id: true,
+  userName: true,
+  firstName: true,
+  lastName: true,
+  profileImage: true,
+};
+
+const rememberId = (seenIds: Set<string>, id: string) => {
+  seenIds.add(id);
+  if (seenIds.size <= 1000) return;
+  const oldestId = seenIds.values().next().value;
+  if (oldestId) seenIds.delete(oldestId);
+};
+
+const relaySocketEvents = async () => {
+  const userIds = [...userSocketsMap.keys()];
+  if (!io || userIds.length === 0) return;
+
+  try {
+    const messages = await prisma.message.findMany({
+      where: {
+        createdAt: { gte: messageCursor },
+        OR: [{ receiverId: { in: userIds } }, { senderId: { in: userIds } }],
+      },
+      orderBy: { createdAt: 'asc' },
+      include: {
+        sender: { select: chatUserSelect },
+        receiver: { select: chatUserSelect },
+      },
+    });
+
+    for (const message of messages) {
+      if (message.createdAt > messageCursor) messageCursor = message.createdAt;
+      if (seenMessageIds.has(message.id)) continue;
+      rememberId(seenMessageIds, message.id);
+
+      if (userSocketsMap.has(message.receiverId)) {
+        io.to(`user:${message.receiverId}`).emit('message:receive', message);
+      }
+      if (userSocketsMap.has(message.senderId)) {
+        io.to(`user:${message.senderId}`).emit('message:sent', message);
+      }
+    }
+
+    const notifications = await prisma.notification.findMany({
+      where: {
+        createdAt: { gte: notificationCursor },
+        userId: { in: userIds },
+      },
+      orderBy: { createdAt: 'asc' },
+      include: {
+        actor: { select: chatUserSelect },
+      },
+    });
+
+    for (const notification of notifications) {
+      if (notification.createdAt > notificationCursor) notificationCursor = notification.createdAt;
+      if (seenNotificationIds.has(notification.id)) continue;
+      rememberId(seenNotificationIds, notification.id);
+      if (userSocketsMap.has(notification.userId)) {
+        io.to(`user:${notification.userId}`).emit('notification:new', notification);
+      }
+    }
+  } catch (error) {
+    console.error('socket relay failed', error);
+  }
+};
+
+const startSocketRelay = () => {
+  if (relayStarted) return;
+  relayStarted = true;
+  const startedAt = new Date(Date.now() - 2000);
+  messageCursor = startedAt;
+  notificationCursor = startedAt;
+  setInterval(() => {
+    void relaySocketEvents();
+  }, 1000);
+};
 
 const getIO = (): Server | null => {
   return io;
@@ -344,6 +429,9 @@ const initSocketIO = (httpServer: HttpServer): Server => {
       }
     });
   });
+
+  // Live browsers can land on different servers. The database is the shared copy those servers read.
+  startSocketRelay();
 
   return io;
 };
