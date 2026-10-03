@@ -1,4 +1,4 @@
-import { Server as HttpServer } from 'http';
+import { IncomingMessage, Server as HttpServer } from 'http';
 import { Server, Socket } from 'socket.io';
 import { checkJwtToken } from '../utils';
 import { TokenIdentifier } from '../enums';
@@ -28,12 +28,28 @@ const getIO = (): Server | null => {
   return io;
 };
 
+const SOCKET_PATH = '/api/socket-io';
+
+const normalizeSocketUrl = (req: IncomingMessage) => {
+  const rawUrl = req.url || '/';
+  const queryIndex = rawUrl.indexOf('?');
+  const pathname = (queryIndex === -1 ? rawUrl : rawUrl.slice(0, queryIndex)).replace(/\/$/, '') || '/';
+  const query = queryIndex === -1 ? '' : rawUrl.slice(queryIndex);
+  const engineHandshake = query.includes('EIO=') || query.includes('transport=');
+  const socketPath = pathname === SOCKET_PATH || pathname === '/socket.io' || (pathname === '/' && engineHandshake);
+
+  if (socketPath) {
+    req.url = `${SOCKET_PATH}${query}`;
+  }
+};
+
 const initSocketIO = (httpServer: HttpServer): Server => {
-  // Vercel mounts api/socket-io at /api/socket-io and forwards only /socket.io.
-  const socketPath = process.env.VERCEL ? '/socket.io' : '/api/socket-io/socket.io';
+  // Live route is the Vercel function /api/socket-io. Extra /socket.io segments 404 before Node.
+  httpServer.on('request', normalizeSocketUrl);
+  httpServer.on('upgrade', normalizeSocketUrl);
 
   io = new Server(httpServer, {
-    path: socketPath,
+    path: SOCKET_PATH,
     cors: {
       origin: process.env.FRONTEND_URL,
       credentials: true,
