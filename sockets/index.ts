@@ -32,6 +32,7 @@ const seenNotificationIds = new Set<string>();
 const presenceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const deliveredSweepAt = new Map<string, number>();
 const lastHeartbeat = new Map<string, number>();
+const presenceSnapshot = new Map<string, boolean>();
 
 const chatUserSelect = {
   id: true,
@@ -113,6 +114,28 @@ const refreshOnlineUsers = async (userIds: string[]) => {
   due.forEach((userId) => lastHeartbeat.set(userId, now));
 };
 
+const relayPresence = async (userIds: string[]) => {
+  const partners = await prisma.users.findMany({
+    where: {
+      OR: [
+        { sentMessages: { some: { receiverId: { in: userIds } } } },
+        { receivedMessages: { some: { senderId: { in: userIds } } } },
+      ],
+    },
+    select: { id: true, isOnline: true, lastSeen: true },
+  });
+
+  for (const partner of partners) {
+    if (presenceSnapshot.get(partner.id) === partner.isOnline) continue;
+    presenceSnapshot.set(partner.id, partner.isOnline);
+    io?.emit('user:presence', {
+      userId: partner.id,
+      isOnline: partner.isOnline,
+      lastSeen: partner.lastSeen.toISOString(),
+    });
+  }
+};
+
 const relaySocketEvents = async () => {
   const userIds = [...userSocketsMap.keys()];
   if (!io || userIds.length === 0 || relayRunning) return;
@@ -120,6 +143,7 @@ const relaySocketEvents = async () => {
 
   try {
     await refreshOnlineUsers(userIds);
+    await relayPresence(userIds);
 
     const messages = await prisma.message.findMany({
       where: {
@@ -207,18 +231,23 @@ const initSocketIO = (httpServer: HttpServer): Server => {
   httpServer.on('request', normalizeSocketUrl);
   httpServer.on('upgrade', normalizeSocketUrl);
 
-  const onVercel = Boolean(process.env.VERCEL);
-
   io = new Server(httpServer, {
     path: SOCKET_PATH,
-    // The WebSocket upgrade crashes this Vercel function. Polling completes the handshake.
-    transports: onVercel ? ['polling'] : ['polling', 'websocket'],
-    allowUpgrades: !onVercel,
+    transports: ['websocket'],
+    allowUpgrades: false,
+    perMessageDeflate: false,
     cors: {
       origin: process.env.FRONTEND_URL,
       credentials: true,
       methods: ['GET', 'POST'],
     },
+  });
+
+  const upgradeListeners = httpServer.listeners('upgrade').slice();
+  httpServer.removeAllListeners('upgrade');
+  httpServer.on('upgrade', (req, socket, head) => {
+    const safeHead = Buffer.isBuffer(head) ? head : Buffer.alloc(0);
+    upgradeListeners.forEach((listener) => listener.call(httpServer, req, socket, safeHead));
   });
 
   // JWT Authentication Middleware for Socket Handshake
