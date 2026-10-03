@@ -29,8 +29,11 @@ const getIO = (): Server | null => {
 };
 
 const initSocketIO = (httpServer: HttpServer): Server => {
+  // Vercel mounts api/socket-io at /api/socket-io and forwards only /socket.io.
+  const socketPath = process.env.VERCEL ? '/socket.io' : '/api/socket-io/socket.io';
+
   io = new Server(httpServer, {
-    path: '/api/socket-io/socket.io',
+    path: socketPath,
     cors: {
       origin: process.env.FRONTEND_URL,
       credentials: true,
