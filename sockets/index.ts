@@ -250,6 +250,10 @@ const initSocketIO = (httpServer: HttpServer): Server => {
     upgradeListeners.forEach((listener) => listener.call(httpServer, req, socket, safeHead));
   });
 
+  // Vercel does not call listen(), so Engine.IO never creates its websocket server.
+  const engine = io.engine as unknown as { ws?: unknown; init: () => void };
+  if (!engine.ws) engine.init();
+
   // JWT Authentication Middleware for Socket Handshake
   io.use(async (socket: CustomSocket, next) => {
     try {
