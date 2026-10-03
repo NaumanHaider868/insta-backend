@@ -24,10 +24,13 @@ let io: Server | null = null;
 const userSocketsMap = new Map<string, Set<string>>();
 const userActiveConversationMap = new Map<string, string>();
 let relayStarted = false;
+let relayRunning = false;
 let messageCursor = new Date();
 let notificationCursor = new Date();
 const seenMessageIds = new Set<string>();
 const seenNotificationIds = new Set<string>();
+const presenceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const deliveredSweepAt = new Map<string, number>();
 
 const chatUserSelect = {
   id: true,
@@ -44,9 +47,38 @@ const rememberId = (seenIds: Set<string>, id: string) => {
   if (oldestId) seenIds.delete(oldestId);
 };
 
+const schedulePresence = (userId: string) => {
+  const existingTimer = presenceTimers.get(userId);
+  if (existingTimer) clearTimeout(existingTimer);
+
+  const timer = setTimeout(() => {
+    presenceTimers.delete(userId);
+    const isOnline = Boolean(userSocketsMap.get(userId)?.size);
+    const lastSeen = new Date();
+    void prisma.users
+      .update({
+        where: { id: userId },
+        data: { isOnline, lastSeen },
+      })
+      .then(() => {
+        io?.emit('user:presence', {
+          userId,
+          isOnline,
+          lastSeen: lastSeen.toISOString(),
+        });
+      })
+      .catch((error) => {
+        console.error('presence update failed', error);
+      });
+  }, 2000);
+
+  presenceTimers.set(userId, timer);
+};
+
 const relaySocketEvents = async () => {
   const userIds = [...userSocketsMap.keys()];
-  if (!io || userIds.length === 0) return;
+  if (!io || userIds.length === 0 || relayRunning) return;
+  relayRunning = true;
 
   try {
     const messages = await prisma.message.findMany({
@@ -95,6 +127,8 @@ const relaySocketEvents = async () => {
     }
   } catch (error) {
     console.error('socket relay failed', error);
+  } finally {
+    relayRunning = false;
   }
 };
 
@@ -106,7 +140,7 @@ const startSocketRelay = () => {
   notificationCursor = startedAt;
   setInterval(() => {
     void relaySocketEvents();
-  }, 1000);
+  }, 3000);
 };
 
 const getIO = (): Server | null => {
@@ -213,37 +247,28 @@ const initSocketIO = (httpServer: HttpServer): Server => {
     }
     userSocketsMap.get(userId)!.add(socket.id);
 
-    // Mark online
-    const now = new Date();
-    await prisma.users.update({
-      where: { id: userId },
-      data: {
-        isOnline: true,
-        lastSeen: now,
-      },
-    });
+    if (userSocketsMap.get(userId)?.size === 1) {
+      schedulePresence(userId);
+    }
 
-    // Broadcast presence update
-    io?.emit('user:presence', {
-      userId,
-      isOnline: true,
-      lastSeen: now.toISOString(),
-    });
-
-    const pendingMessages = await prisma.message.findMany({
-      where: { receiverId: userId, isReceived: false },
-      select: { id: true, senderId: true },
-    });
-    if (pendingMessages.length > 0) {
-      await prisma.message.updateMany({
-        where: { id: { in: pendingMessages.map(({ id }) => id) } },
-        data: { isReceived: true },
+    const lastSweep = deliveredSweepAt.get(userId) || 0;
+    if (Date.now() - lastSweep > 15000) {
+      deliveredSweepAt.set(userId, Date.now());
+      const pendingMessages = await prisma.message.findMany({
+        where: { receiverId: userId, isReceived: false },
+        select: { id: true, senderId: true },
       });
-      for (const pendingMessage of pendingMessages) {
-        io?.to(`user:${pendingMessage.senderId}`).emit('message:delivered', {
-          messageId: pendingMessage.id,
-          receiverId: userId,
+      if (pendingMessages.length > 0) {
+        await prisma.message.updateMany({
+          where: { id: { in: pendingMessages.map(({ id }) => id) } },
+          data: { isReceived: true },
         });
+        for (const pendingMessage of pendingMessages) {
+          io?.to(`user:${pendingMessage.senderId}`).emit('message:delivered', {
+            messageId: pendingMessage.id,
+            receiverId: userId,
+          });
+        }
       }
     }
 
@@ -358,16 +383,20 @@ const initSocketIO = (httpServer: HttpServer): Server => {
             return;
           }
 
-          const readResult = await prisma.message.updateMany({
+          const unreadMessages = await prisma.message.findMany({
             where: {
               senderId,
               receiverId: userId,
               isRead: false,
             },
-            data: {
-              isRead: true,
-            },
+            select: { id: true },
           });
+          const readResult = unreadMessages.length
+            ? await prisma.message.updateMany({
+                where: { id: { in: unreadMessages.map(({ id }) => id) } },
+                data: { isRead: true },
+              })
+            : { count: 0 };
 
           if (readResult.count > 0) {
             io?.to(`user:${senderId}`).emit('message:read', {
@@ -410,21 +439,7 @@ const initSocketIO = (httpServer: HttpServer): Server => {
         userSockets.delete(socket.id);
         if (userSockets.size === 0) {
           userSocketsMap.delete(userId);
-
-          const disconnectTime = new Date();
-          await prisma.users.update({
-            where: { id: userId },
-            data: {
-              isOnline: false,
-              lastSeen: disconnectTime,
-            },
-          });
-
-          io?.emit('user:presence', {
-            userId,
-            isOnline: false,
-            lastSeen: disconnectTime.toISOString(),
-          });
+          schedulePresence(userId);
         }
       }
     });
