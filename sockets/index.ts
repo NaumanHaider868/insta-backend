@@ -48,8 +48,13 @@ const initSocketIO = (httpServer: HttpServer): Server => {
   httpServer.on('request', normalizeSocketUrl);
   httpServer.on('upgrade', normalizeSocketUrl);
 
+  const onVercel = Boolean(process.env.VERCEL);
+
   io = new Server(httpServer, {
     path: SOCKET_PATH,
+    // The WebSocket upgrade crashes this Vercel function. Polling completes the handshake.
+    transports: onVercel ? ['polling'] : ['polling', 'websocket'],
+    allowUpgrades: !onVercel,
     cors: {
       origin: process.env.FRONTEND_URL,
       credentials: true,
