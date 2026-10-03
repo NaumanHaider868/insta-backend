@@ -246,8 +246,32 @@ const initSocketIO = (httpServer: HttpServer): Server => {
   const upgradeListeners = httpServer.listeners('upgrade').slice();
   httpServer.removeAllListeners('upgrade');
   httpServer.on('upgrade', (req, socket, head) => {
-    const safeHead = Buffer.isBuffer(head) ? head : Buffer.alloc(0);
-    upgradeListeners.forEach((listener) => listener.call(httpServer, req, socket, safeHead));
+    if (req?.headers) {
+      const headers: Record<string, string | string[] | undefined> = {};
+      Object.entries(req.headers).forEach(([key, value]) => {
+        headers[key.toLowerCase()] = Array.isArray(value) ? value.join(', ') : value;
+      });
+      req.headers = headers;
+    }
+
+    const safeHead = Buffer.isBuffer(head)
+      ? head
+      : Buffer.from(head && typeof head === 'object' ? head : []);
+
+    try {
+      upgradeListeners.forEach((listener) => listener.call(httpServer, req, socket, safeHead));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'WebSocket upgrade failed';
+      console.error('socket upgrade failed', error);
+      if (socket && typeof socket.write === 'function') {
+        const body = Buffer.from(message);
+        socket.write(
+          `HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\nConnection: close\r\nContent-Length: ${body.length}\r\n\r\n`
+        );
+        socket.write(body);
+      }
+      socket?.destroy?.();
+    }
   });
 
   // Vercel does not call listen(), so Engine.IO never creates its websocket server.
